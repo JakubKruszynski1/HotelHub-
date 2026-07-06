@@ -1,4 +1,5 @@
 using HotelHub.Domain;
+using HotelHub.Structural.Composite;
 
 namespace HotelHub.Creational;
 
@@ -23,6 +24,12 @@ public sealed class HotelRegistry
     private HotelRegistry()
     {
     }
+
+    /// <summary>Korzeń drzewa struktury hotelu (Composite): hotel → piętra → pokoje.</summary>
+    public HotelBranch? HotelStructure { get; private set; }
+
+    public void SetHotelStructure(HotelBranch structure) =>
+        HotelStructure = structure ?? throw new ArgumentNullException(nameof(structure));
 
     public IReadOnlyCollection<Room> Rooms
     {

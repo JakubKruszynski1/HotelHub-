@@ -76,10 +76,6 @@ public sealed class ReservationBuilder
                 $"Nie można utworzyć rezerwacji — brakuje danych: {missing.ToString().TrimEnd(',', ' ')}.");
         }
 
-        var totalPrice = _pricing is not null
-            ? _pricing.Calculate(_room!.GetPrice(), _stay!)
-            : _room!.GetPrice() * _stay!.Nights;
-
-        return new Reservation(_guest!, _room!, _stay!, totalPrice);
+        return new Reservation(_guest!, _room!, _stay!, _pricing);
     }
 }
