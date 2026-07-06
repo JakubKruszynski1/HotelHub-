@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{CF7496D7-0C88-4238-8BBF-AEA2FC3A7D69}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HotelHub", "src\HotelHub\HotelHub.csproj", "{D14E21D0-E62E-47A9-BB2A-366DCC45458D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{CECF4B13-B9E1-457D-A66E-7559F771677E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HotelHub.Tests", "tests\HotelHub.Tests\HotelHub.Tests.csproj", "{5704F908-B4E5-4FCD-A745-4F236C1DE757}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D14E21D0-E62E-47A9-BB2A-366DCC45458D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D14E21D0-E62E-47A9-BB2A-366DCC45458D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D14E21D0-E62E-47A9-BB2A-366DCC45458D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D14E21D0-E62E-47A9-BB2A-366DCC45458D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5704F908-B4E5-4FCD-A745-4F236C1DE757}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5704F908-B4E5-4FCD-A745-4F236C1DE757}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5704F908-B4E5-4FCD-A745-4F236C1DE757}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5704F908-B4E5-4FCD-A745-4F236C1DE757}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{D14E21D0-E62E-47A9-BB2A-366DCC45458D} = {CF7496D7-0C88-4238-8BBF-AEA2FC3A7D69}
+		{5704F908-B4E5-4FCD-A745-4F236C1DE757} = {CECF4B13-B9E1-457D-A66E-7559F771677E}
+	EndGlobalSection
+EndGlobal

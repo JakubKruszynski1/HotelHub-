@@ -6,6 +6,10 @@
 # dotenv files
 .env
 
+# HotelHub - pliki generowane przez aplikacje
+hotelhub-data.json
+audit.log
+
 # User-specific files
 *.rsuser
 *.suo
