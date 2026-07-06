@@ -17,6 +17,13 @@ namespace HotelHub.Structural;
 /// </summary>
 public sealed class BookingFacade
 {
+    /// <summary>
+    /// Blokada operacji mutujących — UI webowe (Blazor Server) może wywoływać
+    /// modyfikacje współbieżnie z wielu połączeń, a stan jest współdzielony
+    /// przez Singleton <see cref="HotelRegistry"/>.
+    /// </summary>
+    private static readonly object SyncRoot = new();
+
     private readonly HotelRegistry _registry = HotelRegistry.Instance;
     private readonly AvailabilityService _availability = new();
     private readonly PaymentService _payment = new();
@@ -59,23 +66,26 @@ public sealed class BookingFacade
     /// </summary>
     public void SeedSampleData()
     {
-        if (_registry.Rooms.Count > 0)
+        lock (SyncRoot)
         {
-            return;
+            if (_registry.Rooms.Count > 0)
+            {
+                return;
+            }
+
+            SetupHotel("Hotel Pod Różą",
+                (RoomType.Standard, 101),
+                (RoomType.Standard, 102),
+                (RoomType.Deluxe, 103),
+                (RoomType.Standard, 104),
+                (RoomType.Deluxe, 201),
+                (RoomType.Apartment, 202),
+                (RoomType.Standard, 203),
+                (RoomType.Apartment, 204));
+
+            RegisterGuest("Jan", "Kowalski", "jan.kowalski@example.com");
+            RegisterGuest("Anna", "Nowak", "anna.nowak@example.com");
         }
-
-        SetupHotel("Hotel Pod Różą",
-            (RoomType.Standard, 101),
-            (RoomType.Standard, 102),
-            (RoomType.Deluxe, 103),
-            (RoomType.Standard, 104),
-            (RoomType.Deluxe, 201),
-            (RoomType.Apartment, 202),
-            (RoomType.Standard, 203),
-            (RoomType.Apartment, 204));
-
-        RegisterGuest("Jan", "Kowalski", "jan.kowalski@example.com");
-        RegisterGuest("Anna", "Nowak", "anna.nowak@example.com");
     }
 
     public Guest? FindGuestByEmail(string email) => _registry.FindGuestByEmail(email);
@@ -86,9 +96,12 @@ public sealed class BookingFacade
     /// <summary>Rejestruje nowego gościa w systemie.</summary>
     public Guest RegisterGuest(string firstName, string lastName, string email)
     {
-        var guest = new Guest(firstName, lastName, email);
-        _registry.AddGuest(guest);
-        return guest;
+        lock (SyncRoot)
+        {
+            var guest = new Guest(firstName, lastName, email);
+            _registry.AddGuest(guest);
+            return guest;
+        }
     }
 
     /// <summary>Zwraca pokoje wolne w zadanym terminie.</summary>
@@ -106,25 +119,28 @@ public sealed class BookingFacade
         ArgumentNullException.ThrowIfNull(room);
         ArgumentNullException.ThrowIfNull(stay);
 
-        if (!_availability.IsRoomAvailable(room.Number, stay))
+        lock (SyncRoot)
         {
-            throw new InvalidOperationException(
-                $"Pokój {room.Number} jest zajęty w terminie {stay}.");
+            if (!_availability.IsRoomAvailable(room.Number, stay))
+            {
+                throw new InvalidOperationException(
+                    $"Pokój {room.Number} jest zajęty w terminie {stay}.");
+            }
+
+            var pricing = PricingSelector.Select(stay, promoCode);
+
+            var reservation = new ReservationBuilder()
+                .ForGuest(guest)
+                .WithRoom(room)
+                .Between(stay)
+                .WithPricing(pricing)
+                .Build();
+
+            _registry.AddReservation(reservation);
+            AttachObservers(reservation);
+            reservation.Confirm();
+            return reservation;
         }
-
-        var pricing = PricingSelector.Select(stay, promoCode);
-
-        var reservation = new ReservationBuilder()
-            .ForGuest(guest)
-            .WithRoom(room)
-            .Between(stay)
-            .WithPricing(pricing)
-            .Build();
-
-        _registry.AddReservation(reservation);
-        AttachObservers(reservation);
-        reservation.Confirm();
-        return reservation;
     }
 
     /// <summary>Dodaje usługę dodatkową (Decorator) do rezerwacji i przelicza cenę.</summary>
@@ -132,21 +148,24 @@ public sealed class BookingFacade
     {
         ArgumentNullException.ThrowIfNull(reservation);
 
-        if (!reservation.CanModifyExtras)
+        lock (SyncRoot)
         {
-            Console.WriteLine($"Nie można dodać usług do rezerwacji w stanie: {reservation.State.Name}.");
-            return false;
-        }
+            if (!reservation.CanModifyExtras)
+            {
+                Console.WriteLine($"Nie można dodać usług do rezerwacji w stanie: {reservation.State.Name}.");
+                return false;
+            }
 
-        try
-        {
-            reservation.AddExtra(extra);
-            return true;
-        }
-        catch (InvalidOperationException exception)
-        {
-            Console.WriteLine(exception.Message);
-            return false;
+            try
+            {
+                reservation.AddExtra(extra);
+                return true;
+            }
+            catch (InvalidOperationException exception)
+            {
+                Console.WriteLine(exception.Message);
+                return false;
+            }
         }
     }
 
@@ -158,63 +177,87 @@ public sealed class BookingFacade
     {
         ArgumentNullException.ThrowIfNull(reservation);
 
-        if (reservation.State is not ConfirmedState)
+        lock (SyncRoot)
         {
+            if (reservation.State is not ConfirmedState)
+            {
+                reservation.Pay();
+                return false;
+            }
+
+            if (!_payment.ProcessPayment(reservation))
+            {
+                Console.WriteLine("Płatność została odrzucona.");
+                return false;
+            }
+
             reservation.Pay();
-            return false;
+            return true;
         }
-
-        if (!_payment.ProcessPayment(reservation))
-        {
-            Console.WriteLine("Płatność została odrzucona.");
-            return false;
-        }
-
-        reservation.Pay();
-        return true;
     }
 
     /// <summary>Anuluje rezerwację (możliwe tylko ze stanów Oczekująca/Potwierdzona).</summary>
     public void CancelReservation(Reservation reservation)
     {
         ArgumentNullException.ThrowIfNull(reservation);
-        reservation.Cancel();
+
+        lock (SyncRoot)
+        {
+            reservation.Cancel();
+        }
     }
 
     /// <summary>Melduje gościa (wymaga opłaconej rezerwacji).</summary>
     public void CheckIn(Reservation reservation)
     {
         ArgumentNullException.ThrowIfNull(reservation);
-        reservation.CheckIn();
+
+        lock (SyncRoot)
+        {
+            reservation.CheckIn();
+        }
     }
 
     /// <summary>Wymeldowuje gościa i kończy rezerwację.</summary>
     public void CheckOut(Reservation reservation)
     {
         ArgumentNullException.ThrowIfNull(reservation);
-        reservation.CheckOut();
+
+        lock (SyncRoot)
+        {
+            reservation.CheckOut();
+        }
     }
 
     /// <summary>Generuje tekstowe potwierdzenie rezerwacji.</summary>
     public string GetInvoice(Reservation reservation) => _invoice.GenerateInvoice(reservation);
 
     /// <summary>Zapisuje stan aplikacji do pliku JSON.</summary>
-    public void SaveData() => _persistence.Save();
+    public void SaveData()
+    {
+        lock (SyncRoot)
+        {
+            _persistence.Save();
+        }
+    }
 
     /// <summary>Wczytuje stan aplikacji z pliku JSON i ponownie podpina obserwatorów.</summary>
     public bool LoadData()
     {
-        if (!_persistence.Load())
+        lock (SyncRoot)
         {
-            return false;
-        }
+            if (!_persistence.Load())
+            {
+                return false;
+            }
 
-        foreach (var reservation in _registry.Reservations)
-        {
-            AttachObservers(reservation);
-        }
+            foreach (var reservation in _registry.Reservations)
+            {
+                AttachObservers(reservation);
+            }
 
-        return true;
+            return true;
+        }
     }
 
     private void AttachObservers(Reservation reservation)
