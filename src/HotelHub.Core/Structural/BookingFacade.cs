@@ -112,11 +112,36 @@ public sealed class BookingFacade
         _availability.GetAvailableRooms(stay);
 
     /// <summary>
-    /// Tworzy rezerwację: sprawdza dostępność pokoju, dobiera strategię cenową
-    /// (Strategy — automatycznie z dat, kod PROMO20 nadpisuje), buduje rezerwację
-    /// przez <see cref="ReservationBuilder"/>, podpina obserwatorów i potwierdza ją.
+    /// Wylicza wycenę pobytu bez tworzenia rezerwacji — na potrzeby podglądu
+    /// „na żywo" w kreatorze: pokój opakowany dekoratorami usług (Decorator)
+    /// i taryfa dobrana strategią cenową (Strategy, kod PROMO20 nadpisuje).
     /// </summary>
-    public Reservation MakeReservation(Guest guest, Room room, DateRange stay, string? promoCode = null)
+    public ReservationQuote CalculateQuote(
+        Room room, DateRange stay, IEnumerable<RoomExtra>? extras = null, string? promoCode = null)
+    {
+        ArgumentNullException.ThrowIfNull(room);
+        ArgumentNullException.ThrowIfNull(stay);
+
+        var decoratedRoom = ApplyExtras(room, extras);
+        var pricing = PricingSelector.Select(stay, promoCode);
+
+        return new ReservationQuote(
+            decoratedRoom.GetDescription(),
+            decoratedRoom.GetPrice(),
+            pricing.Name,
+            pricing.Calculate(decoratedRoom.GetPrice(), stay));
+    }
+
+    /// <summary>
+    /// Tworzy rezerwację: sprawdza dostępność pokoju, dobiera strategię cenową
+    /// (Strategy — automatycznie z dat, kod PROMO20 nadpisuje), opakowuje pokój
+    /// usługami dodatkowymi (Decorator), buduje rezerwację przez
+    /// <see cref="ReservationBuilder"/> i podpina obserwatorów.
+    /// Przy <paramref name="autoConfirm"/> od razu ją potwierdza.
+    /// </summary>
+    public Reservation MakeReservation(
+        Guest guest, Room room, DateRange stay, string? promoCode = null,
+        IEnumerable<RoomExtra>? extras = null, bool autoConfirm = true)
     {
         ArgumentNullException.ThrowIfNull(guest);
         ArgumentNullException.ThrowIfNull(room);
@@ -134,16 +159,34 @@ public sealed class BookingFacade
 
             var reservation = new ReservationBuilder()
                 .ForGuest(guest)
-                .WithRoom(room)
+                .WithRoom(ApplyExtras(room, extras))
                 .Between(stay)
                 .WithPricing(pricing)
                 .Build();
 
             _registry.AddReservation(reservation);
             AttachObservers(reservation);
-            reservation.Confirm();
+
+            if (autoConfirm)
+            {
+                reservation.Confirm();
+            }
+
             return reservation;
         }
+    }
+
+    /// <summary>Opakowuje pokój dekoratorami wskazanych usług dodatkowych.</summary>
+    private static IRoom ApplyExtras(Room room, IEnumerable<RoomExtra>? extras)
+    {
+        IRoom decorated = room;
+
+        foreach (var extra in (extras ?? []).Distinct())
+        {
+            decorated = RoomExtraDecorator.Apply(decorated, extra);
+        }
+
+        return decorated;
     }
 
     /// <summary>Dodaje usługę dodatkową (Decorator) do rezerwacji i przelicza cenę.</summary>

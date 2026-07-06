@@ -1,7 +1,304 @@
 @page "/reservations/new"
+@inject BookingFacade Facade
 
 <PageTitle>HotelHub — nowa rezerwacja</PageTitle>
 
 <h1>Nowa rezerwacja</h1>
+<p class="text-muted">Kreator krok po kroku (Builder) — wybór gościa, terminu, pokoju i usług dodatkowych.</p>
 
-<p>Kreator rezerwacji krok po kroku (w budowie).</p>
+<div class="mb-4">
+    @foreach (var (number, title) in StepTitles)
+    {
+        <span class="badge me-2 @(number == _step ? "bg-primary" : number < _step ? "bg-success" : "bg-secondary")">
+            @number. @title
+        </span>
+    }
+</div>
+
+@if (_created is not null)
+{
+    <div class="alert alert-success">
+        Utworzono rezerwację <strong>@_created.ShortId</strong> (stan: @_created.State.Name) —
+        cena łączna <strong>@_created.TotalPrice</strong>.
+        Potwierdź i opłać ją w zakładce <a href="reservations">Rezerwacje</a>.
+    </div>
+    <button class="btn btn-outline-primary" @onclick="ResetWizard">Utwórz kolejną rezerwację</button>
+}
+else
+{
+    @if (_error is not null)
+    {
+        <div class="alert alert-danger">@_error</div>
+    }
+
+    @if (_step == 1)
+    {
+        <div class="card">
+            <div class="card-header">Krok 1/5 — wybierz gościa</div>
+            <div class="card-body">
+                @if (Facade.Guests.Count == 0)
+                {
+                    <p>Brak zarejestrowanych gości — najpierw dodaj gościa w zakładce <a href="guests">Goście</a>.</p>
+                }
+                else
+                {
+                    <select class="form-select mb-3" style="max-width: 30rem" @bind="_guestEmail">
+                        <option value="">— wybierz gościa —</option>
+                        @foreach (var guest in Facade.Guests)
+                        {
+                            <option value="@guest.Email">@guest.FullName (@guest.Email)</option>
+                        }
+                    </select>
+                    <button class="btn btn-primary" disabled="@string.IsNullOrEmpty(_guestEmail)" @onclick="() => _step = 2">
+                        Dalej
+                    </button>
+                }
+            </div>
+        </div>
+    }
+    else if (_step == 2)
+    {
+        <div class="card">
+            <div class="card-header">Krok 2/5 — termin pobytu</div>
+            <div class="card-body">
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-auto">
+                        <label class="form-label" for="wfrom">Data przyjazdu</label>
+                        <input id="wfrom" type="date" class="form-control" @bind="_from" />
+                    </div>
+                    <div class="col-auto">
+                        <label class="form-label" for="wto">Data wyjazdu</label>
+                        <input id="wto" type="date" class="form-control" @bind="_to" />
+                    </div>
+                </div>
+                <button class="btn btn-outline-secondary me-2" @onclick="() => _step = 1">Wstecz</button>
+                <button class="btn btn-primary" @onclick="ConfirmDates">Dalej</button>
+            </div>
+        </div>
+    }
+    else if (_step == 3)
+    {
+        <div class="card">
+            <div class="card-header">Krok 3/5 — wybierz pokój (wolne w terminie @_stay)</div>
+            <div class="card-body">
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-auto">
+                        <label class="form-label" for="typeFilter">Typ pokoju</label>
+                        <select id="typeFilter" class="form-select" @bind="_typeFilter">
+                            <option value="">wszystkie</option>
+                            <option value="@RoomType.Standard">Standard</option>
+                            <option value="@RoomType.Deluxe">Deluxe</option>
+                            <option value="@RoomType.Apartment">Apartament</option>
+                        </select>
+                    </div>
+                </div>
+
+                @if (FilteredRooms.Count == 0)
+                {
+                    <p class="text-muted">Brak wolnych pokoi spełniających kryteria.</p>
+                }
+                else
+                {
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr><th></th><th>Nr</th><th>Typ</th><th>Osoby</th><th>Cena/noc</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var room in FilteredRooms)
+                            {
+                                <tr>
+                                    <td>
+                                        <input type="radio" name="room" class="form-check-input"
+                                               checked="@(_roomNumber == room.Number)"
+                                               @onchange="() => _roomNumber = room.Number" />
+                                    </td>
+                                    <td>@room.Number</td>
+                                    <td>@room.TypeName</td>
+                                    <td>@room.Capacity</td>
+                                    <td>@room.GetPrice()</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                <button class="btn btn-outline-secondary me-2" @onclick="() => _step = 2">Wstecz</button>
+                <button class="btn btn-primary" disabled="@(_roomNumber is null)" @onclick="() => _step = 4">Dalej</button>
+            </div>
+        </div>
+    }
+    else if (_step == 4)
+    {
+        <div class="card">
+            <div class="card-header">Krok 4/5 — usługi dodatkowe (Decorator, cena przelicza się na żywo)</div>
+            <div class="card-body">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="breakfast"
+                           checked="@_extras.Contains(RoomExtra.Breakfast)"
+                           @onchange="e => ToggleExtra(RoomExtra.Breakfast, e)" />
+                    <label class="form-check-label" for="breakfast">
+                        Śniadanie (+@BreakfastDecorator.PricePerNight zł/noc)
+                    </label>
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="parking"
+                           checked="@_extras.Contains(RoomExtra.Parking)"
+                           @onchange="e => ToggleExtra(RoomExtra.Parking, e)" />
+                    <label class="form-check-label" for="parking">
+                        Parking (+@ParkingDecorator.PricePerNight zł/noc)
+                    </label>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="spa"
+                           checked="@_extras.Contains(RoomExtra.Spa)"
+                           @onchange="e => ToggleExtra(RoomExtra.Spa, e)" />
+                    <label class="form-check-label" for="spa">
+                        SPA (+@SpaDecorator.PricePerNight zł/noc)
+                    </label>
+                </div>
+
+                @if (CurrentQuote is { } quote)
+                {
+                    <div class="alert alert-info">
+                        @quote.RoomDescription<br />
+                        Cena za noc: <strong>@quote.PricePerNight</strong> ·
+                        Razem (@_stay!.Nights nocy): <strong>@quote.TotalPrice</strong>
+                    </div>
+                }
+
+                <button class="btn btn-outline-secondary me-2" @onclick="() => _step = 3">Wstecz</button>
+                <button class="btn btn-primary" @onclick="() => _step = 5">Dalej</button>
+            </div>
+        </div>
+    }
+    else if (_step == 5)
+    {
+        <div class="card">
+            <div class="card-header">Krok 5/5 — podsumowanie i wycena (Strategy)</div>
+            <div class="card-body">
+                <div class="row g-2 align-items-end mb-3">
+                    <div class="col-auto">
+                        <label class="form-label" for="promo">Kod promocyjny (np. PROMO20)</label>
+                        <input id="promo" class="form-control" @bind="_promoCode" @bind:event="oninput" />
+                    </div>
+                </div>
+
+                @if (CurrentQuote is { } quote)
+                {
+                    <table class="table w-auto">
+                        <tbody>
+                            <tr><th class="pe-4">Gość</th><td>@SelectedGuest?.FullName (@SelectedGuest?.Email)</td></tr>
+                            <tr><th class="pe-4">Pokój</th><td>@quote.RoomDescription</td></tr>
+                            <tr><th class="pe-4">Termin</th><td>@_stay</td></tr>
+                            <tr><th class="pe-4">Cena za noc</th><td>@quote.PricePerNight</td></tr>
+                            <tr><th class="pe-4">Taryfa (Strategy)</th><td>@quote.TariffName</td></tr>
+                            <tr class="table-success"><th class="pe-4">RAZEM</th><td class="fw-bold">@quote.TotalPrice</td></tr>
+                        </tbody>
+                    </table>
+                }
+
+                <button class="btn btn-outline-secondary me-2" @onclick="() => _step = 4">Wstecz</button>
+                <button class="btn btn-success" @onclick="CreateReservation">Utwórz rezerwację</button>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private static readonly (int Number, string Title)[] StepTitles =
+    [
+        (1, "Gość"), (2, "Termin"), (3, "Pokój"), (4, "Usługi"), (5, "Podsumowanie")
+    ];
+
+    private int _step = 1;
+    private string _guestEmail = string.Empty;
+    private DateTime _from = DateTime.Today.AddDays(1);
+    private DateTime _to = DateTime.Today.AddDays(4);
+    private DateRange? _stay;
+    private string _typeFilter = string.Empty;
+    private int? _roomNumber;
+    private readonly HashSet<RoomExtra> _extras = [];
+    private string _promoCode = string.Empty;
+    private string? _error;
+    private Reservation? _created;
+
+    private Guest? SelectedGuest => Facade.FindGuestByEmail(_guestEmail);
+
+    private Room? SelectedRoom =>
+        _roomNumber is null ? null : Facade.Rooms.FirstOrDefault(r => r.Number == _roomNumber);
+
+    private IReadOnlyList<Room> FilteredRooms =>
+        _stay is null
+            ? []
+            : Facade.GetAvailableRooms(_stay)
+                .Where(r => _typeFilter.Length == 0 || r.Type.ToString() == _typeFilter)
+                .ToList();
+
+    private ReservationQuote? CurrentQuote =>
+        SelectedRoom is { } room && _stay is { } stay
+            ? Facade.CalculateQuote(room, stay, _extras,
+                string.IsNullOrWhiteSpace(_promoCode) ? null : _promoCode)
+            : null;
+
+    private void ConfirmDates()
+    {
+        _error = null;
+
+        try
+        {
+            _stay = new DateRange(_from, _to);
+            _roomNumber = null;
+            _step = 3;
+        }
+        catch (ArgumentException exception)
+        {
+            _error = exception.Message;
+        }
+    }
+
+    private void ToggleExtra(RoomExtra extra, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+        {
+            _extras.Add(extra);
+        }
+        else
+        {
+            _extras.Remove(extra);
+        }
+    }
+
+    private void CreateReservation()
+    {
+        _error = null;
+
+        if (SelectedGuest is not { } guest || SelectedRoom is not { } room || _stay is not { } stay)
+        {
+            _error = "Kreator nie ma kompletu danych — wróć do wcześniejszych kroków.";
+            return;
+        }
+
+        try
+        {
+            _created = Facade.MakeReservation(guest, room, stay,
+                string.IsNullOrWhiteSpace(_promoCode) ? null : _promoCode,
+                _extras, autoConfirm: false);
+        }
+        catch (InvalidOperationException exception)
+        {
+            _error = exception.Message;
+        }
+    }
+
+    private void ResetWizard()
+    {
+        _step = 1;
+        _guestEmail = string.Empty;
+        _stay = null;
+        _typeFilter = string.Empty;
+        _roomNumber = null;
+        _extras.Clear();
+        _promoCode = string.Empty;
+        _error = null;
+        _created = null;
+    }
+}
