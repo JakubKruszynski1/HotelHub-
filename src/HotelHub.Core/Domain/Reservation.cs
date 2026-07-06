@@ -49,6 +49,14 @@ public sealed class Reservation
     /// <summary>Usługi dodatkowe można modyfikować tylko przed opłaceniem.</summary>
     public bool CanModifyExtras => State is PendingState or ConfirmedState;
 
+    // --- Operacje dozwolone w bieżącym stanie (State) — sterują widocznością akcji w UI ---
+
+    public bool CanConfirm => State is PendingState;
+    public bool CanPay => State is ConfirmedState;
+    public bool CanCancel => State is PendingState or ConfirmedState;
+    public bool CanCheckIn => State is PaidState && !IsCheckedIn;
+    public bool CanCheckOut => State is PaidState && IsCheckedIn;
+
     public Reservation(Guest guest, IRoom room, DateRange stay, IPricingStrategy? pricing = null)
         : this(Guid.NewGuid(), guest, room, stay, pricing)
     {

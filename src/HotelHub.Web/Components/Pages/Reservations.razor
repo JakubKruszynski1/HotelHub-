@@ -1,7 +1,127 @@
 @page "/reservations"
+@inject BookingFacade Facade
 
 <PageTitle>HotelHub — rezerwacje</PageTitle>
 
 <h1>Rezerwacje</h1>
+<p class="text-muted">
+    Dostępność akcji wynika ze stanu rezerwacji (wzorzec State) — przycisk jest widoczny
+    tylko wtedy, gdy operacja jest dozwolona.
+</p>
 
-<p>Tabela rezerwacji z akcjami (w budowie).</p>
+@if (_message is not null)
+{
+    <div class="alert @_messageCss">@_message</div>
+}
+
+@if (Facade.Reservations.Count == 0)
+{
+    <p>Brak rezerwacji — utwórz pierwszą w zakładce <a href="reservations/new">Nowa rezerwacja</a>.</p>
+}
+else
+{
+    <table class="table table-striped align-middle">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Gość</th>
+                <th>Pokój (z usługami)</th>
+                <th>Termin</th>
+                <th>Cena</th>
+                <th>Stan</th>
+                <th>Akcje</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var reservation in Facade.Reservations)
+            {
+                <tr>
+                    <td><code>@reservation.ShortId</code></td>
+                    <td>@reservation.Guest.FullName</td>
+                    <td>@reservation.Room.GetDescription()</td>
+                    <td>@reservation.Stay</td>
+                    <td>@reservation.TotalPrice</td>
+                    <td><span class="@StatusBadge.CssClass(reservation)">@StatusBadge.Label(reservation)</span></td>
+                    <td>
+                        @if (reservation.CanConfirm)
+                        {
+                            <button class="btn btn-sm btn-primary me-1 mb-1"
+                                    @onclick="() => Confirm(reservation)">Potwierdź</button>
+                        }
+                        @if (reservation.CanPay)
+                        {
+                            <button class="btn btn-sm btn-success me-1 mb-1"
+                                    @onclick="() => Pay(reservation)">Opłać</button>
+                        }
+                        @if (reservation.CanCheckIn)
+                        {
+                            <button class="btn btn-sm btn-info me-1 mb-1"
+                                    @onclick="() => CheckIn(reservation)">Zamelduj</button>
+                        }
+                        @if (reservation.CanCheckOut)
+                        {
+                            <button class="btn btn-sm btn-dark me-1 mb-1"
+                                    @onclick="() => CheckOut(reservation)">Wymelduj</button>
+                        }
+                        @if (reservation.CanCancel)
+                        {
+                            <button class="btn btn-sm btn-outline-danger me-1 mb-1"
+                                    @onclick="() => Cancel(reservation)">Anuluj</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private string? _message;
+    private string _messageCss = "alert-success";
+
+    private void Confirm(Reservation reservation)
+    {
+        Facade.ConfirmReservation(reservation);
+        Report(reservation, reservation.CanPay, "została potwierdzona");
+    }
+
+    private void Pay(Reservation reservation) =>
+        Report(reservation, Facade.PayReservation(reservation), "została opłacona");
+
+    private void Cancel(Reservation reservation)
+    {
+        Facade.CancelReservation(reservation);
+        Report(reservation, !reservation.BlocksRoom, "została anulowana");
+    }
+
+    private void CheckIn(Reservation reservation)
+    {
+        Facade.CheckIn(reservation);
+        Report(reservation, reservation.IsCheckedIn, "gość zameldowany");
+    }
+
+    private void CheckOut(Reservation reservation)
+    {
+        Facade.CheckOut(reservation);
+        Report(reservation, !reservation.CanCheckOut && !reservation.CanCheckIn && !reservation.CanPay,
+            "gość wymeldowany, pobyt zakończony");
+    }
+
+    /// <summary>
+    /// Buduje komunikat wyniku: operację nielegalną wzorzec State odrzuca bez wyjątku,
+    /// więc wynik oceniamy po stanie rezerwacji po wywołaniu.
+    /// </summary>
+    private void Report(Reservation reservation, bool succeeded, string successDescription)
+    {
+        if (succeeded)
+        {
+            _message = $"Rezerwacja {reservation.ShortId}: {successDescription}. Aktualny stan: {reservation.State.Name}.";
+            _messageCss = "alert-success";
+        }
+        else
+        {
+            _message = $"Rezerwacja {reservation.ShortId}: operacja niedozwolona w stanie '{reservation.State.Name}'.";
+            _messageCss = "alert-warning";
+        }
+    }
+}

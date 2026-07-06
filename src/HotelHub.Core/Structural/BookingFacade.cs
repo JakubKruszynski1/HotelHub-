@@ -30,12 +30,31 @@ public sealed class BookingFacade
     private readonly InvoiceService _invoice = new();
     private readonly PersistenceService _persistence = new();
 
-    private readonly IReservationObserver[] _observers =
+    private readonly List<IReservationObserver> _observers =
     [
         new GuestNotifier(),
         new ReceptionNotifier(),
         new AuditLogger()
     ];
+
+    /// <summary>
+    /// Rejestruje dodatkowego obserwatora (Observer) obok istniejących
+    /// i podpina go do wszystkich obecnych rezerwacji.
+    /// </summary>
+    public void RegisterObserver(IReservationObserver observer)
+    {
+        ArgumentNullException.ThrowIfNull(observer);
+
+        lock (SyncRoot)
+        {
+            _observers.Add(observer);
+
+            foreach (var reservation in _registry.Reservations)
+            {
+                reservation.Attach(observer);
+            }
+        }
+    }
 
     /// <summary>Wszystkie pokoje hotelu.</summary>
     public IReadOnlyCollection<Room> Rooms => _registry.Rooms;
@@ -239,6 +258,17 @@ public sealed class BookingFacade
 
             reservation.Pay();
             return true;
+        }
+    }
+
+    /// <summary>Potwierdza rezerwację (możliwe tylko ze stanu Oczekująca).</summary>
+    public void ConfirmReservation(Reservation reservation)
+    {
+        ArgumentNullException.ThrowIfNull(reservation);
+
+        lock (SyncRoot)
+        {
+            reservation.Confirm();
         }
     }
 
