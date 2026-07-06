@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using HotelHub.Behavioral.Pricing;
 using HotelHub.Behavioral.States;
 using HotelHub.Creational;
 using HotelHub.Domain;
@@ -57,7 +58,10 @@ public sealed class PersistenceService
                         .Select(extra => extra.ToString())
                         .ToList(),
                     Status = StateToCode(reservation.State),
-                    IsCheckedIn = reservation.IsCheckedIn
+                    IsCheckedIn = reservation.IsCheckedIn,
+                    Pricing = reservation.Pricing is null
+                        ? null
+                        : PricingToCode(reservation.Pricing)
                 })
                 .ToList()
         };
@@ -205,7 +209,8 @@ public sealed class PersistenceService
                     }
                 }
 
-                var reservation = new Reservation(dto.Id, guest, decoratedRoom, new DateRange(from, to));
+                var reservation = new Reservation(
+                    dto.Id, guest, decoratedRoom, new DateRange(from, to), CodeToPricing(dto.Pricing));
 
                 var state = CodeToState(dto.Status);
 
@@ -227,6 +232,20 @@ public sealed class PersistenceService
 
         return reservations;
     }
+
+    /// <summary>Mapuje strategię cenową na kod zapisywany w JSON (np. PromoPricing → "Promo").</summary>
+    private static string PricingToCode(IPricingStrategy pricing) =>
+        pricing.GetType().Name.Replace("Pricing", string.Empty);
+
+    /// <summary>Mapuje kod z JSON na strategię cenową; null oznacza cenę bazową × liczba nocy.</summary>
+    private static IPricingStrategy? CodeToPricing(string? code) => code switch
+    {
+        "Standard" => new StandardPricing(),
+        "HighSeason" => new HighSeasonPricing(),
+        "Weekend" => new WeekendPricing(),
+        "Promo" => new PromoPricing(),
+        _ => null
+    };
 
     /// <summary>Mapuje stan rezerwacji na kod zapisywany w JSON (np. PaidState → "Paid").</summary>
     private static string StateToCode(IReservationState state) =>
@@ -275,5 +294,6 @@ public sealed class PersistenceService
         public List<string>? Extras { get; set; }
         public string? Status { get; set; }
         public bool IsCheckedIn { get; set; }
+        public string? Pricing { get; set; }
     }
 }

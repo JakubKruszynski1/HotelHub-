@@ -4,6 +4,7 @@ using HotelHub.Behavioral.States;
 using HotelHub.Creational;
 using HotelHub.Domain;
 using HotelHub.Services;
+using HotelHub.Structural.Composite;
 using HotelHub.Structural.Decorators;
 
 namespace HotelHub.Structural;
@@ -28,6 +29,34 @@ public sealed class BookingFacade
         new ReceptionNotifier(),
         new AuditLogger()
     ];
+
+    /// <summary>Wszyscy zarejestrowani goście.</summary>
+    public IReadOnlyCollection<Guest> Guests => _registry.Guests;
+
+    /// <summary>Wszystkie rezerwacje w systemie.</summary>
+    public IReadOnlyCollection<Reservation> Reservations => _registry.Reservations;
+
+    /// <summary>Korzeń drzewa struktury hotelu (Composite).</summary>
+    public HotelBranch? GetHotelStructure() => _registry.HotelStructure;
+
+    /// <summary>
+    /// Konfiguruje hotel: tworzy pokoje przez <see cref="RoomFactory"/> (Factory Method),
+    /// rejestruje je i buduje drzewo struktury (Composite). Używane przy seedowaniu danych.
+    /// </summary>
+    public void SetupHotel(string hotelName, params (RoomType Type, int Number)[] rooms)
+    {
+        foreach (var (type, number) in rooms)
+        {
+            _registry.AddRoom(RoomFactory.CreateRoom(type, number));
+        }
+
+        _registry.SetHotelStructure(HotelBranch.BuildHotel(hotelName, _registry.Rooms));
+    }
+
+    public Guest? FindGuestByEmail(string email) => _registry.FindGuestByEmail(email);
+
+    public Reservation? FindReservationByShortId(string shortId) =>
+        _registry.FindReservationByShortId(shortId);
 
     /// <summary>Rejestruje nowego gościa w systemie.</summary>
     public Guest RegisterGuest(string firstName, string lastName, string email)
