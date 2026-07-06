@@ -37,6 +37,9 @@ public sealed class BookingFacade
         new AuditLogger()
     ];
 
+    /// <summary>Wszystkie pokoje hotelu.</summary>
+    public IReadOnlyCollection<Room> Rooms => _registry.Rooms;
+
     /// <summary>Wszyscy zarejestrowani goście.</summary>
     public IReadOnlyCollection<Guest> Guests => _registry.Guests;
 
