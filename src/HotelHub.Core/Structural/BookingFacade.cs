@@ -53,6 +53,31 @@ public sealed class BookingFacade
         _registry.SetHotelStructure(HotelBranch.BuildHotel(hotelName, _registry.Rooms));
     }
 
+    /// <summary>
+    /// Seeduje przykładowe dane (1 hotel, 2 piętra, 8 pokoi mieszanych typów, 2 gości),
+    /// o ile rejestr jest pusty — aplikację można demonstrować od razu po uruchomieniu.
+    /// </summary>
+    public void SeedSampleData()
+    {
+        if (_registry.Rooms.Count > 0)
+        {
+            return;
+        }
+
+        SetupHotel("Hotel Pod Różą",
+            (RoomType.Standard, 101),
+            (RoomType.Standard, 102),
+            (RoomType.Deluxe, 103),
+            (RoomType.Standard, 104),
+            (RoomType.Deluxe, 201),
+            (RoomType.Apartment, 202),
+            (RoomType.Standard, 203),
+            (RoomType.Apartment, 204));
+
+        RegisterGuest("Jan", "Kowalski", "jan.kowalski@example.com");
+        RegisterGuest("Anna", "Nowak", "anna.nowak@example.com");
+    }
+
     public Guest? FindGuestByEmail(string email) => _registry.FindGuestByEmail(email);
 
     public Reservation? FindReservationByShortId(string shortId) =>

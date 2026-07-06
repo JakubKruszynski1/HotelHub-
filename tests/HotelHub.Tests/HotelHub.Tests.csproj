@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\HotelHub\HotelHub.csproj" />
+    <ProjectReference Include="..\..\src\HotelHub.Core\HotelHub.Core.csproj" />
   </ItemGroup>
 
 </Project>
