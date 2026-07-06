@@ -53,7 +53,8 @@ public abstract class Room : IRoom, IHotelComponent
 
         foreach (var reservation in HotelRegistry.Instance.Reservations)
         {
-            if (RoomExtraDecorator.Unwrap(reservation.Room).Number == Number)
+            if (reservation.CountsTowardRevenue &&
+                RoomExtraDecorator.Unwrap(reservation.Room).Number == Number)
             {
                 total += reservation.TotalPrice;
             }

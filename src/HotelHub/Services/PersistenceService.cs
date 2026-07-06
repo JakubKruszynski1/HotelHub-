@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using HotelHub.Behavioral.States;
 using HotelHub.Creational;
 using HotelHub.Domain;
 using HotelHub.Structural.Composite;
@@ -54,7 +55,9 @@ public sealed class PersistenceService
                     To = reservation.Stay.To.ToString(DateFormat, CultureInfo.InvariantCulture),
                     Extras = RoomExtraDecorator.GetExtras(reservation.Room)
                         .Select(extra => extra.ToString())
-                        .ToList()
+                        .ToList(),
+                    Status = StateToCode(reservation.State),
+                    IsCheckedIn = reservation.IsCheckedIn
                 })
                 .ToList()
         };
@@ -202,7 +205,19 @@ public sealed class PersistenceService
                     }
                 }
 
-                reservations.Add(new Reservation(dto.Id, guest, decoratedRoom, new DateRange(from, to)));
+                var reservation = new Reservation(dto.Id, guest, decoratedRoom, new DateRange(from, to));
+
+                var state = CodeToState(dto.Status);
+
+                if (state is null)
+                {
+                    Console.WriteLine(
+                        $"Rezerwacja {dto.Id}: nieznany status '{dto.Status}' — przywrócono stan Oczekująca.");
+                    state = new PendingState();
+                }
+
+                reservation.RestoreState(state, dto.IsCheckedIn);
+                reservations.Add(reservation);
             }
             catch (ArgumentException exception)
             {
@@ -212,6 +227,21 @@ public sealed class PersistenceService
 
         return reservations;
     }
+
+    /// <summary>Mapuje stan rezerwacji na kod zapisywany w JSON (np. PaidState → "Paid").</summary>
+    private static string StateToCode(IReservationState state) =>
+        state.GetType().Name.Replace("State", string.Empty);
+
+    /// <summary>Mapuje kod z JSON na stan rezerwacji; null dla nieznanego kodu.</summary>
+    private static IReservationState? CodeToState(string? code) => code switch
+    {
+        "Pending" => new PendingState(),
+        "Confirmed" => new ConfirmedState(),
+        "Paid" => new PaidState(),
+        "Completed" => new CompletedState(),
+        "Cancelled" => new CancelledState(),
+        _ => null
+    };
 
     private sealed class SnapshotDto
     {
@@ -243,5 +273,7 @@ public sealed class PersistenceService
         public string? From { get; set; }
         public string? To { get; set; }
         public List<string>? Extras { get; set; }
+        public string? Status { get; set; }
+        public bool IsCheckedIn { get; set; }
     }
 }
