@@ -11,7 +11,11 @@ public sealed class StandardRoom : Room
     public override string TypeName => "Standard";
 
     public StandardRoom(int number)
-        : base(number, capacity: 2, new Money(DefaultPricePerNight))
+        : base(number, capacity: 2, new Money(DefaultPricePerNight),
+            description: "Przytulny pokój z wygodnym łóżkiem i miejscem do pracy — " +
+                         "wszystko, czego potrzebujesz na udany pobyt w mieście.",
+            amenities: ["Wi-Fi", "Telewizor", "Prywatna łazienka", "Klimatyzacja"],
+            imagePath: "img/rooms/standard.svg")
     {
     }
 }

@@ -1,3 +1,4 @@
+using HotelHub.Behavioral.Observers;
 using HotelHub.Domain;
 using HotelHub.Structural.Composite;
 using HotelHub.Structural.Decorators;
@@ -82,6 +83,9 @@ public sealed class AuthorizedBookingFacade : IBookingFacade
     }
 
     public IReadOnlyList<Room> GetAvailableRooms(DateRange stay) => _inner.GetAvailableRooms(stay);
+
+    public IReadOnlyCollection<DateTime> GetOccupiedDays(int roomNumber, int year, int month) =>
+        _inner.GetOccupiedDays(roomNumber, year, month);
 
     public ReservationQuote CalculateQuote(
         Room room, DateRange stay, IEnumerable<RoomExtra>? extras = null, string? promoCode = null) =>
@@ -181,6 +185,44 @@ public sealed class AuthorizedBookingFacade : IBookingFacade
     {
         var authorization = RequireReception();
         return authorization.Granted ? _inner.CheckOut(reservation, Actor) : Refused(authorization);
+    }
+
+    // --- Powiadomienia ---
+
+    public IReadOnlyList<Notification> GetMyNotifications() => _inner.GetNotifications(Actor);
+
+    public int GetUnreadNotificationCount() => _inner.GetUnreadNotificationCount(Actor);
+
+    public void MarkNotificationsRead() => _inner.MarkNotificationsRead(Actor);
+
+    // --- Zarządzanie pokojami ---
+
+    public OperationResult AddRoom(RoomType type, int number)
+    {
+        var authorization = RequireReception();
+        return authorization.Granted ? _inner.AddRoom(type, number) : Refused(authorization);
+    }
+
+    public OperationResult UpdateRoom(
+        int number, decimal pricePerNight, int capacity, string description, IEnumerable<string> amenities)
+    {
+        var authorization = RequireReception();
+
+        return authorization.Granted
+            ? _inner.UpdateRoom(number, pricePerNight, capacity, description, amenities)
+            : Refused(authorization);
+    }
+
+    public OperationResult SetRoomOutOfService(int number, string reason)
+    {
+        var authorization = RequireReception();
+        return authorization.Granted ? _inner.SetRoomOutOfService(number, reason) : Refused(authorization);
+    }
+
+    public OperationResult ReturnRoomToService(int number)
+    {
+        var authorization = RequireReception();
+        return authorization.Granted ? _inner.ReturnRoomToService(number) : Refused(authorization);
     }
 
     // --- Persystencja ---

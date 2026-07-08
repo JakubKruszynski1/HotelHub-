@@ -48,7 +48,8 @@ public sealed class BookingFacade : IBookingFacade
     [
         new GuestNotifier(),
         new ReceptionNotifier(),
-        new AuditLogger()
+        new AuditLogger(),
+        new NotificationPublisher()
     ];
 
     /// <summary>
@@ -97,8 +98,10 @@ public sealed class BookingFacade : IBookingFacade
     }
 
     /// <summary>
-    /// Seeduje przykładowe dane (1 hotel, 2 piętra, 8 pokoi mieszanych typów, 2 gości),
-    /// o ile rejestr jest pusty — aplikację można demonstrować od razu po uruchomieniu.
+    /// Seeduje przykładowe dane, o ile rejestr jest pusty: 12 pokoi na 3 piętrach
+    /// (zróżnicowane typy, ceny i udogodnienia, jeden w remoncie), konta demonstracyjne
+    /// (admin + 2 gości) oraz 5 rezerwacji w różnych stanach — każdy ekran aplikacji
+    /// ma sensowną treść od pierwszego uruchomienia.
     /// </summary>
     public void SeedSampleData()
     {
@@ -117,7 +120,23 @@ public sealed class BookingFacade : IBookingFacade
                 (RoomType.Deluxe, 201),
                 (RoomType.Apartment, 202),
                 (RoomType.Standard, 203),
-                (RoomType.Apartment, 204));
+                (RoomType.Deluxe, 204),
+                (RoomType.Apartment, 301),
+                (RoomType.Apartment, 302),
+                (RoomType.Deluxe, 303),
+                (RoomType.Standard, 304));
+
+            // Zróżnicowanie oferty: apartament premium i pokój ekonomiczny.
+            UpdateRoom(301, 750m, 6,
+                "Apartament premium na najwyższym piętrze z tarasem i panoramicznym widokiem na miasto.",
+                ["Wi-Fi", "Telewizor", "Prywatna łazienka", "Klimatyzacja", "Minibar", "Sejf",
+                 "Aneks kuchenny", "Salon", "Taras widokowy", "Ekspres do kawy"]);
+            UpdateRoom(304, 180m, 2,
+                "Kompaktowy pokój w atrakcyjnej cenie — świetny wybór na krótki pobyt.",
+                ["Wi-Fi", "Telewizor", "Prywatna łazienka"]);
+
+            // Pokój w remoncie — niewidoczny w portalu i w dostępności.
+            SetRoomOutOfService(104, "Remont łazienki — planowe zakończenie prac za 3 tygodnie");
 
             var jan = RegisterGuest("Jan", "Kowalski", "jan.kowalski@example.com");
             var anna = RegisterGuest("Anna", "Nowak", "anna.nowak@example.com");
@@ -126,6 +145,44 @@ public sealed class BookingFacade : IBookingFacade
             _accountService.CreateGuestAccount("jan.kowalski", "Gosc1234!", jan);
             _accountService.CreateGuestAccount("anna.nowak", "Gosc1234!", anna);
             _accountService.CreateReceptionAccount("admin", "admin123");
+
+            var admin = new ActorContext("admin", UserRole.Reception, null);
+            var janActor = new ActorContext("jan.kowalski", UserRole.Guest, jan.Id);
+            var annaActor = new ActorContext("anna.nowak", UserRole.Guest, anna.Id);
+            var today = DateTime.Today;
+
+            Room RoomNo(int number) => _registry.FindRoomByNumber(number)!;
+
+            // 1) Oczekująca — widoczna w kolejce akceptacji recepcji.
+            MakeReservation(jan, RoomNo(103),
+                new DateRange(today.AddDays(14), today.AddDays(17)), actor: janActor);
+
+            // 2) Potwierdzona — gość może ją opłacić.
+            var confirmed = MakeReservation(anna, RoomNo(201),
+                new DateRange(today.AddDays(7), today.AddDays(10)),
+                extras: [RoomExtra.Breakfast], actor: annaActor);
+            confirmed.Confirm(admin);
+
+            // 3) Opłacona z przyjazdem dzisiaj — na pulpicie dnia recepcji.
+            var arrivingToday = MakeReservation(jan, RoomNo(102),
+                new DateRange(today, today.AddDays(3)),
+                extras: [RoomExtra.Breakfast, RoomExtra.Parking], actor: janActor);
+            arrivingToday.Confirm(admin);
+            arrivingToday.Pay(janActor);
+
+            // 4) Odrzucona z powodem — widocznym u gościa.
+            var rejected = MakeReservation(anna, RoomNo(301),
+                new DateRange(today.AddDays(20), today.AddDays(23)),
+                promoCode: "PROMO20", actor: annaActor);
+            rejected.Reject("W tym terminie apartament jest niedostępny z powodu rezerwacji grupowej.", admin);
+
+            // 5) Zakończona — zasila raport przychodów.
+            var completed = MakeReservation(anna, RoomNo(204),
+                new DateRange(today, today.AddDays(1)), actor: annaActor);
+            completed.Confirm(admin);
+            completed.Pay(annaActor);
+            completed.CheckIn(admin);
+            completed.CheckOut(admin);
         }
     }
 
@@ -245,6 +302,163 @@ public sealed class BookingFacade : IBookingFacade
     /// <summary>Zwraca pokoje wolne w zadanym terminie.</summary>
     public IReadOnlyList<Room> GetAvailableRooms(DateRange stay) =>
         _availability.GetAvailableRooms(stay);
+
+    /// <summary>Dni zajęte pokoju we wskazanym miesiącu (kalendarz zajętości).</summary>
+    public IReadOnlyCollection<DateTime> GetOccupiedDays(int roomNumber, int year, int month) =>
+        _availability.GetOccupiedDays(roomNumber, year, month);
+
+    // --- Powiadomienia (Observer → NotificationCenter) ---
+
+    /// <summary>Powiadomienia wykonującego: gość — własne, recepcja — kanał recepcji.</summary>
+    public IReadOnlyList<Notification> GetNotifications(ActorContext? actor = null)
+    {
+        var context = actor ?? ActorContext.System;
+
+        if (context.CanActAsReception)
+        {
+            return NotificationCenter.Instance.GetForReception();
+        }
+
+        return context.GuestId is { } guestId
+            ? NotificationCenter.Instance.GetForGuest(guestId)
+            : [];
+    }
+
+    /// <summary>Liczba nieprzeczytanych powiadomień wykonującego (dzwoneczek).</summary>
+    public int GetUnreadNotificationCount(ActorContext? actor = null)
+    {
+        var context = actor ?? ActorContext.System;
+
+        if (context.CanActAsReception)
+        {
+            return NotificationCenter.Instance.UnreadCountForReception();
+        }
+
+        return context.GuestId is { } guestId
+            ? NotificationCenter.Instance.UnreadCountForGuest(guestId)
+            : 0;
+    }
+
+    /// <summary>Oznacza wszystkie powiadomienia wykonującego jako przeczytane.</summary>
+    public void MarkNotificationsRead(ActorContext? actor = null)
+    {
+        var context = actor ?? ActorContext.System;
+
+        if (context.CanActAsReception)
+        {
+            NotificationCenter.Instance.MarkAllReadForReception();
+        }
+        else if (context.GuestId is { } guestId)
+        {
+            NotificationCenter.Instance.MarkAllReadForGuest(guestId);
+        }
+    }
+
+    // --- Zarządzanie pokojami (panel recepcji) ---
+
+    /// <summary>Dodaje pokój wskazanego typu (Factory Method) i przebudowuje drzewo hotelu.</summary>
+    public OperationResult AddRoom(RoomType type, int number)
+    {
+        lock (SyncRoot)
+        {
+            try
+            {
+                _registry.AddRoom(RoomFactory.CreateRoom(type, number));
+                RebuildHotelStructure();
+                return OperationResult.Ok($"Dodano pokój {number}.");
+            }
+            catch (Exception exception) when (
+                exception is ArgumentException or ArgumentOutOfRangeException
+                    or InvalidOperationException or NotSupportedException)
+            {
+                return OperationResult.Fail(exception.Message);
+            }
+        }
+    }
+
+    /// <summary>Aktualizuje parametry pokoju (cena bazowa, pojemność, opis, udogodnienia).</summary>
+    public OperationResult UpdateRoom(
+        int number, decimal pricePerNight, int capacity, string description, IEnumerable<string> amenities)
+    {
+        lock (SyncRoot)
+        {
+            var room = _registry.FindRoomByNumber(number);
+
+            if (room is null)
+            {
+                return OperationResult.Fail($"Nie znaleziono pokoju o numerze {number}.");
+            }
+
+            try
+            {
+                room.UpdateDetails(new Money(pricePerNight), capacity, description, amenities);
+                return OperationResult.Ok($"Zapisano zmiany pokoju {number}.");
+            }
+            catch (Exception exception) when (exception is ArgumentException or ArgumentOutOfRangeException)
+            {
+                return OperationResult.Fail(exception.Message);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Wyłącza pokój z użytku (remont) — pokój znika z portalu i z dostępności.
+    /// Nie można wyłączyć pokoju z aktywnymi rezerwacjami (Opłacona/Zameldowana).
+    /// </summary>
+    public OperationResult SetRoomOutOfService(int number, string reason)
+    {
+        lock (SyncRoot)
+        {
+            var room = _registry.FindRoomByNumber(number);
+
+            if (room is null)
+            {
+                return OperationResult.Fail($"Nie znaleziono pokoju o numerze {number}.");
+            }
+
+            var activeReservation = _registry.Reservations.FirstOrDefault(r =>
+                r.BaseRoom.Number == number &&
+                r.State is Behavioral.States.PaidState or Behavioral.States.CheckedInState);
+
+            if (activeReservation is not null)
+            {
+                return OperationResult.Fail(
+                    $"Nie można wyłączyć pokoju {number} — ma aktywną rezerwację " +
+                    $"{activeReservation.ReservationNumber} ({activeReservation.State.Name}).");
+            }
+
+            try
+            {
+                room.SetOutOfService(reason);
+                return OperationResult.Ok($"Pokój {number} został wyłączony z użytku.");
+            }
+            catch (ArgumentException exception)
+            {
+                return OperationResult.Fail(exception.Message);
+            }
+        }
+    }
+
+    /// <summary>Przywraca pokój do użytku.</summary>
+    public OperationResult ReturnRoomToService(int number)
+    {
+        lock (SyncRoot)
+        {
+            var room = _registry.FindRoomByNumber(number);
+
+            if (room is null)
+            {
+                return OperationResult.Fail($"Nie znaleziono pokoju o numerze {number}.");
+            }
+
+            room.ReturnToService();
+            return OperationResult.Ok($"Pokój {number} został przywrócony do użytku.");
+        }
+    }
+
+    private void RebuildHotelStructure() =>
+        _registry.SetHotelStructure(HotelBranch.BuildHotel(
+            _registry.HotelStructure?.Name ?? "HotelHub", _registry.Rooms));
 
     /// <summary>
     /// Wylicza wycenę pobytu bez tworzenia rezerwacji — na potrzeby podglądu
@@ -520,4 +734,10 @@ public sealed class BookingFacade : IBookingFacade
         LoadData()
             ? OperationResult.Ok("Dane zostały wczytane z pliku JSON.")
             : OperationResult.Fail("Nie udało się wczytać danych — brak pliku lub plik jest uszkodzony.");
+
+    IReadOnlyList<Notification> IBookingFacade.GetMyNotifications() => GetNotifications(Actor);
+
+    int IBookingFacade.GetUnreadNotificationCount() => GetUnreadNotificationCount(Actor);
+
+    void IBookingFacade.MarkNotificationsRead() => MarkNotificationsRead(Actor);
 }

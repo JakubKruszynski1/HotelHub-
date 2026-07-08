@@ -1,3 +1,4 @@
+using HotelHub.Behavioral.Observers;
 using HotelHub.Domain;
 using HotelHub.Structural.Composite;
 using HotelHub.Structural.Decorators;
@@ -35,6 +36,9 @@ public interface IBookingFacade
 
     /// <summary>Pokoje wolne w zadanym terminie.</summary>
     IReadOnlyList<Room> GetAvailableRooms(DateRange stay);
+
+    /// <summary>Dni zajęte pokoju we wskazanym miesiącu (kalendarz zajętości).</summary>
+    IReadOnlyCollection<DateTime> GetOccupiedDays(int roomNumber, int year, int month);
 
     /// <summary>Wycena pobytu „na żywo" (Decorator + Strategy) bez tworzenia rezerwacji.</summary>
     ReservationQuote CalculateQuote(
@@ -83,6 +87,31 @@ public interface IBookingFacade
 
     /// <summary>Wymeldowuje gościa (wyłącznie recepcja).</summary>
     OperationResult CheckOut(Reservation reservation);
+
+    // --- Powiadomienia (Observer → NotificationCenter) ---
+
+    /// <summary>Powiadomienia zalogowanego: gość — własne, recepcja — kanał recepcji.</summary>
+    IReadOnlyList<Notification> GetMyNotifications();
+
+    /// <summary>Liczba nieprzeczytanych powiadomień (dzwoneczek).</summary>
+    int GetUnreadNotificationCount();
+
+    /// <summary>Oznacza powiadomienia zalogowanego jako przeczytane.</summary>
+    void MarkNotificationsRead();
+
+    // --- Zarządzanie pokojami (wyłącznie recepcja) ---
+
+    /// <summary>Dodaje pokój wskazanego typu (Factory Method).</summary>
+    OperationResult AddRoom(RoomType type, int number);
+
+    /// <summary>Aktualizuje parametry pokoju.</summary>
+    OperationResult UpdateRoom(int number, decimal pricePerNight, int capacity, string description, IEnumerable<string> amenities);
+
+    /// <summary>Wyłącza pokój z użytku z powodem (blokada przy aktywnych rezerwacjach).</summary>
+    OperationResult SetRoomOutOfService(int number, string reason);
+
+    /// <summary>Przywraca pokój do użytku.</summary>
+    OperationResult ReturnRoomToService(int number);
 
     // --- Persystencja (wyłącznie recepcja) ---
 
