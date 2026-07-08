@@ -55,6 +55,9 @@ public interface IBookingFacade
     /// <summary>Weryfikacja poświadczeń przy logowaniu.</summary>
     UserAccount? VerifyCredentials(string login, string password);
 
+    /// <summary>Nazwa wyświetlana konta (imię i nazwisko gościa lub login recepcji).</summary>
+    string GetAccountDisplayName(UserAccount account);
+
     /// <summary>Zmiana hasła — wyłącznie własnego konta.</summary>
     OperationResult ChangePassword(string login, string currentPassword, string newPassword);
 
@@ -117,4 +120,7 @@ public interface IBookingFacade
 
     OperationResult SaveData();
     OperationResult LoadData();
+
+    /// <summary>Seeduje dane demonstracyjne przy starcie aplikacji (idempotentne).</summary>
+    void SeedSampleData();
 }

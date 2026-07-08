@@ -1,0 +1,56 @@
+@page "/login"
+
+<PageTitle>Logowanie — HotelHub</PageTitle>
+
+<div class="auth-wrap">
+    <div class="auth-card">
+        <div class="card">
+            <h1>Zaloguj się</h1>
+            <p class="auth-sub">Witaj ponownie w Hotelu Pod Różą</p>
+
+            @if (!string.IsNullOrEmpty(Error))
+            {
+                <div class="alert alert-error">@Error</div>
+            }
+
+            <form method="post" action="/auth/login">
+                <AntiforgeryToken />
+                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+
+                <div class="field">
+                    <label for="login">Login</label>
+                    <input id="login" name="login" value="@LoginValue" autocomplete="username" />
+                </div>
+
+                <div class="field">
+                    <label for="password">Hasło</label>
+                    <input id="password" name="password" type="password" autocomplete="current-password" />
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-block">Zaloguj się</button>
+            </form>
+
+            <p class="text-center small" style="margin-top:1rem">
+                Nie masz konta? <a href="/register">Zarejestruj się</a>
+            </p>
+
+            <div class="demo-box">
+                <h4>Konta demonstracyjne</h4>
+                Recepcja: <code>admin</code> / <code>admin123</code><br />
+                Gość: <code>jan.kowalski</code> / <code>Gosc1234!</code><br />
+                Gość: <code>anna.nowak</code> / <code>Gosc1234!</code>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
+
+    [SupplyParameterFromQuery(Name = "login")]
+    public string? LoginValue { get; set; }
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+}

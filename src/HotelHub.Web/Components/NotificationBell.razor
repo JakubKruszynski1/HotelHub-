@@ -1,0 +1,74 @@
+@inject IBookingFacade Facade
+
+@* Dzwoneczek z licznikiem nieprzeczytanych powiadomień i rozwijanym panelem. *@
+
+<div class="bell-wrap">
+    <button class="bell-btn" title="Powiadomienia" @onclick="Toggle">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+        </svg>
+        @if (_unread > 0)
+        {
+            <span class="bell-count">@_unread</span>
+        }
+    </button>
+
+    @if (_open)
+    {
+        <div class="bell-panel">
+            <div class="bell-head">
+                <h4>Powiadomienia</h4>
+                @if (_unread > 0)
+                {
+                    <button class="btn btn-ghost btn-sm" @onclick="MarkRead">Oznacz jako przeczytane</button>
+                }
+            </div>
+            @if (_notifications.Count == 0)
+            {
+                <div class="bell-empty">Brak powiadomień.</div>
+            }
+            else
+            {
+                @foreach (var notification in _notifications.Take(20))
+                {
+                    <div class="bell-item @(notification.IsRead ? "" : "unread")">
+                        @notification.Message<br />
+                        <span class="time">@Fmt.DateTimeText(notification.CreatedAt)</span>
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private int _unread;
+    private IReadOnlyList<Notification> _notifications = [];
+
+    protected override void OnInitialized() => Refresh();
+
+    private void Toggle()
+    {
+        _open = !_open;
+
+        if (_open)
+        {
+            Refresh();
+        }
+    }
+
+    private void MarkRead()
+    {
+        Facade.MarkNotificationsRead();
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        _notifications = Facade.GetMyNotifications();
+        _unread = Facade.GetUnreadNotificationCount();
+    }
+}

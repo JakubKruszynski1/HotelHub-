@@ -1,84 +1,14 @@
 @page "/"
-@inject BookingFacade Facade
+@inject IBookingFacade Facade
 
-<PageTitle>HotelHub — pulpit</PageTitle>
+<PageTitle>Hotel Pod Różą — HotelHub</PageTitle>
 
-<h1>Pulpit</h1>
+<section class="hero">
+    <div class="hero-inner">
+        <h1>Hotel Pod Różą</h1>
+        <p class="hero-sub">Elegancki wypoczynek w sercu Krakowa — @Facade.Rooms.Count(r => !r.IsOutOfService) pokoi czeka na Ciebie.</p>
+        <a class="btn btn-gold btn-lg" href="/rooms">Zobacz pokoje</a>
+    </div>
+</section>
 
-<div class="row g-3 mb-4">
-    <div class="col-sm-6 col-lg-3">
-        <div class="card text-center h-100">
-            <div class="card-body">
-                <div class="fs-2 fw-bold">@Facade.Rooms.Count</div>
-                <div class="text-muted">pokoje</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-sm-6 col-lg-3">
-        <div class="card text-center h-100">
-            <div class="card-body">
-                <div class="fs-2 fw-bold">@Facade.Guests.Count</div>
-                <div class="text-muted">goście</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-sm-6 col-lg-3">
-        <div class="card text-center h-100">
-            <div class="card-body">
-                <div class="fs-2 fw-bold">@Facade.Reservations.Count</div>
-                <div class="text-muted">rezerwacje</div>
-            </div>
-        </div>
-    </div>
-    <div class="col-sm-6 col-lg-3">
-        <div class="card text-center h-100">
-            <div class="card-body">
-                <div class="fs-2 fw-bold">@(Facade.GetHotelStructure()?.GetRevenue().ToString() ?? "—")</div>
-                <div class="text-muted">łączny przychód (Composite)</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row g-3">
-    <div class="col-lg-6">
-        <div class="card h-100">
-            <div class="card-header">Rezerwacje wg stanów</div>
-            <div class="card-body">
-                @if (Facade.Reservations.Count == 0)
-                {
-                    <p class="text-muted mb-0">Brak rezerwacji — utwórz pierwszą w zakładce „Nowa rezerwacja".</p>
-                }
-                else
-                {
-                    <ul class="list-group list-group-flush">
-                        @foreach (var group in Facade.Reservations
-                            .GroupBy(r => r.State.Name)
-                            .OrderByDescending(g => g.Count()))
-                        {
-                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                <span class="@StatusBadge.CssClass(group.First())">@group.Key</span>
-                                <span class="fw-bold">@group.Count()</span>
-                            </li>
-                        }
-                    </ul>
-                }
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="card h-100">
-            <div class="card-header">Struktura hotelu (drzewo: hotel → piętra → pokoje)</div>
-            <div class="card-body">
-                @if (Facade.GetHotelStructure() is { } hotel)
-                {
-                    <HotelTreeNode Component="hotel" />
-                }
-                else
-                {
-                    <p class="text-muted mb-0">Struktura hotelu nie została skonfigurowana.</p>
-                }
-            </div>
-        </div>
-    </div>
-</div>
+<p class="muted">Pełna strona główna z wyszukiwarką i wyróżnionymi pokojami — w przygotowaniu.</p>

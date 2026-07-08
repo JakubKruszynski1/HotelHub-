@@ -1,0 +1,29 @@
+@page "/admin"
+@layout HotelHub.Web.Components.Layout.AdminLayout
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Reception")]
+@inject IBookingFacade Facade
+
+<PageTitle>Pulpit dnia — HotelHub</PageTitle>
+
+<div class="grid grid-4">
+    <div class="stat-tile">
+        <div class="stat-value">@Facade.Reservations.Count</div>
+        <div class="stat-label">rezerwacje w systemie</div>
+    </div>
+    <div class="stat-tile">
+        <div class="stat-value">@Facade.Rooms.Count</div>
+        <div class="stat-label">pokoje</div>
+    </div>
+    <div class="stat-tile">
+        <div class="stat-value">@Facade.Guests.Count</div>
+        <div class="stat-label">goście</div>
+    </div>
+    <div class="stat-tile">
+        <div class="stat-value">@Facade.GetUnreadNotificationCount()</div>
+        <div class="stat-label">nieprzeczytane powiadomienia</div>
+    </div>
+</div>
+
+<div class="card" style="margin-top:1.25rem">
+    <p class="muted" style="margin:0">Pełny pulpit dnia (przyjazdy, wyjazdy, kolejka akceptacji) — w przygotowaniu.</p>
+</div>

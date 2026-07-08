@@ -1,0 +1,60 @@
+@inherits LayoutComponentBase
+
+@* Layout panelu recepcji: ciemny sidebar z sekcjami, nagłówek z dzwoneczkiem kanału recepcji. *@
+
+<div class="admin-shell">
+    <aside class="sidebar">
+        <a class="brand" href="/admin"><span class="brand-mark">◆</span> HotelHub</a>
+
+        <div class="side-section">Praca recepcji</div>
+        <nav>
+            <NavLink href="/admin" Match="NavLinkMatch.All">Pulpit dnia</NavLink>
+            <NavLink href="/admin/reservations">Rezerwacje</NavLink>
+            <NavLink href="/admin/guests">Goście</NavLink>
+        </nav>
+
+        <div class="side-section">Hotel</div>
+        <nav>
+            <NavLink href="/admin/rooms">Pokoje</NavLink>
+            <NavLink href="/admin/reports">Raporty</NavLink>
+        </nav>
+
+        <div class="side-section">Administracja</div>
+        <nav>
+            <NavLink href="/admin/events">Dziennik zdarzeń</NavLink>
+            <NavLink href="/admin/data">Kopia zapasowa</NavLink>
+        </nav>
+
+        <AuthorizeView>
+            <div class="side-user">
+                <span class="avatar">@context.User.Initials()</span>
+                <div class="small">
+                    @context.User.DisplayName()<br />
+                    <span class="role-chip">@context.User.RoleLabel()</span>
+                </div>
+            </div>
+        </AuthorizeView>
+    </aside>
+
+    <div class="admin-main">
+        <div class="admin-header">
+            <h1>HotelHub — Panel recepcji</h1>
+            <div class="row">
+                <NotificationBell />
+                <a class="btn btn-sm" href="/" title="Podgląd portalu gościa">Portal</a>
+                <form method="post" action="/auth/logout">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn btn-sm btn-outline">Wyloguj</button>
+                </form>
+            </div>
+        </div>
+
+        @Body
+    </div>
+</div>
+
+<div id="blazor-error-ui">
+    Wystąpił nieobsłużony błąd.
+    <a href="" class="reload">Odśwież</a>
+    <a class="dismiss">🗙</a>
+</div>

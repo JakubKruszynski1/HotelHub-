@@ -1,0 +1,76 @@
+@page "/register"
+
+<PageTitle>Rejestracja — HotelHub</PageTitle>
+
+<div class="auth-wrap">
+    <div class="auth-card">
+        <div class="card">
+            <h1>Załóż konto</h1>
+            <p class="auth-sub">Rezerwuj szybciej i śledź swoje pobyty</p>
+
+            @if (!string.IsNullOrEmpty(Error))
+            {
+                <div class="alert alert-error">@Error</div>
+            }
+
+            <form method="post" action="/auth/register">
+                <AntiforgeryToken />
+
+                <div class="field">
+                    <label for="firstName">Imię *</label>
+                    <input id="firstName" name="firstName" value="@FirstName" maxlength="50" />
+                </div>
+
+                <div class="field">
+                    <label for="lastName">Nazwisko *</label>
+                    <input id="lastName" name="lastName" value="@LastName" maxlength="50" />
+                </div>
+
+                <div class="field">
+                    <label for="email">E-mail *</label>
+                    <input id="email" name="email" type="email" value="@Email" />
+                </div>
+
+                <div class="field">
+                    <label for="login">Login *</label>
+                    <input id="login" name="login" value="@LoginValue" autocomplete="username" />
+                    <div class="field-hint">3–30 znaków: litery, cyfry, podkreślnik lub kropka.</div>
+                </div>
+
+                <div class="field">
+                    <label for="password">Hasło *</label>
+                    <input id="password" name="password" type="password" autocomplete="new-password" />
+                    <div class="field-hint">Co najmniej 8 znaków.</div>
+                </div>
+
+                <div class="field">
+                    <label for="password2">Powtórz hasło *</label>
+                    <input id="password2" name="password2" type="password" autocomplete="new-password" />
+                </div>
+
+                <button type="submit" class="btn btn-gold btn-block">Zarejestruj się</button>
+            </form>
+
+            <p class="text-center small" style="margin-top:1rem">
+                Masz już konto? <a href="/login">Zaloguj się</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
+
+    [SupplyParameterFromQuery(Name = "login")]
+    public string? LoginValue { get; set; }
+
+    [SupplyParameterFromQuery(Name = "firstName")]
+    public string? FirstName { get; set; }
+
+    [SupplyParameterFromQuery(Name = "lastName")]
+    public string? LastName { get; set; }
+
+    [SupplyParameterFromQuery(Name = "email")]
+    public string? Email { get; set; }
+}

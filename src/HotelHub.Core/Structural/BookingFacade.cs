@@ -224,6 +224,16 @@ public sealed class BookingFacade : IBookingFacade
         }
     }
 
+    /// <summary>Nazwa wyświetlana konta: imię i nazwisko powiązanego gościa lub login.</summary>
+    public string GetAccountDisplayName(UserAccount account)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+
+        return account.GuestId is { } guestId && _registry.FindGuestById(guestId) is { } guest
+            ? guest.FullName
+            : account.Login;
+    }
+
     /// <summary>Weryfikuje login i hasło; zwraca konto przy powodzeniu, inaczej null.</summary>
     public UserAccount? VerifyCredentials(string login, string password)
     {

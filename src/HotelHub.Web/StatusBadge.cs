@@ -11,16 +11,16 @@ namespace HotelHub.Web;
 /// </summary>
 public static class StatusBadge
 {
-    public static string CssClass(Reservation reservation) => reservation.State switch
+    public static string CssClass(Reservation reservation) => "state-badge " + reservation.State switch
     {
-        PendingState => "badge bg-secondary",
-        ConfirmedState => "badge bg-primary",
-        PaidState => "badge bg-success",
-        CheckedInState => "badge bg-info text-dark",
-        CompletedState => "badge bg-dark",
-        CancelledState => "badge bg-danger",
-        RejectedState => "badge bg-warning text-dark",
-        _ => "badge bg-light text-dark"
+        PendingState => "st-pending",
+        ConfirmedState => "st-confirmed",
+        PaidState => "st-paid",
+        CheckedInState => "st-checkedin",
+        CompletedState => "st-completed",
+        CancelledState => "st-cancelled",
+        RejectedState => "st-rejected",
+        _ => "st-pending"
     };
 
     public static string Label(Reservation reservation) => reservation.State.Name;

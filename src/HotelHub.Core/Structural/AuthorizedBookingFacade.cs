@@ -23,6 +23,12 @@ public sealed class AuthorizedBookingFacade : IBookingFacade
         _userContext = userContext ?? throw new ArgumentNullException(nameof(userContext));
     }
 
+    /// <summary>Tworzy proxy wraz z własną fasadą właściwą — UI nie potrzebuje do niej referencji.</summary>
+    public AuthorizedBookingFacade(ICurrentUserContext userContext)
+        : this(new BookingFacade(userContext), userContext)
+    {
+    }
+
     private ActorContext Actor => _userContext.Actor;
 
     // --- Reguły dostępu ---
@@ -107,6 +113,10 @@ public sealed class AuthorizedBookingFacade : IBookingFacade
 
     public UserAccount? VerifyCredentials(string login, string password) =>
         _inner.VerifyCredentials(login, password);
+
+    public string GetAccountDisplayName(UserAccount account) => _inner.GetAccountDisplayName(account);
+
+    public void SeedSampleData() => _inner.SeedSampleData();
 
     public OperationResult ChangePassword(string login, string currentPassword, string newPassword) =>
         string.Equals(Actor.Login, login?.Trim(), StringComparison.OrdinalIgnoreCase) || Actor.IsSystem

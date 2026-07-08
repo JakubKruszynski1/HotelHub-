@@ -1,0 +1,71 @@
+@inherits LayoutComponentBase
+
+@* Layout portalu gościa: górna belka z nawigacją, dzwoneczkiem i sekcją użytkownika; stopka hotelu. *@
+
+<div class="guest-shell">
+    <header class="topbar">
+        <a class="brand" href="/"><span class="brand-mark">◆</span> HotelHub</a>
+
+        <nav class="topnav">
+            <NavLink href="/rooms">Pokoje</NavLink>
+            <AuthorizeView Roles="Guest">
+                <NavLink href="/my-reservations">Moje rezerwacje</NavLink>
+            </AuthorizeView>
+        </nav>
+
+        <div class="user-section">
+            <AuthorizeView>
+                <Authorized>
+                    <NotificationBell />
+                    <span class="avatar">@context.User.Initials()</span>
+                    <span class="user-name">
+                        @context.User.DisplayName()<br />
+                        <span class="role-chip">@context.User.RoleLabel()</span>
+                    </span>
+                    <AuthorizeView Roles="Guest" Context="inner">
+                        <a class="btn btn-ghost btn-sm" style="color:#d8dde8" href="/profile" title="Profil">Profil</a>
+                    </AuthorizeView>
+                    <form method="post" action="/auth/logout">
+                        <AntiforgeryToken />
+                        <button type="submit" class="btn btn-sm btn-outline" style="border-color:#5a6b8f;color:#d8dde8">
+                            Wyloguj
+                        </button>
+                    </form>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="btn btn-gold btn-sm" href="/login">Zaloguj się</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    </header>
+
+    <main class="guest-main">
+        @Body
+    </main>
+
+    <footer class="footer">
+        <div class="footer-inner">
+            <div>
+                <h4>Hotel Pod Różą</h4>
+                ul. Kwiatowa 12, 31-100 Kraków<br />
+                Recepcja czynna całą dobę
+            </div>
+            <div>
+                <h4>Kontakt</h4>
+                tel. +48 12 345 67 89<br />
+                recepcja@hotelpodroza.example.pl
+            </div>
+            <div>
+                <h4>HotelHub</h4>
+                System rezerwacji hotelowej<br />
+                Projekt edukacyjny — dane fikcyjne
+            </div>
+        </div>
+    </footer>
+</div>
+
+<div id="blazor-error-ui">
+    Wystąpił nieobsłużony błąd.
+    <a href="" class="reload">Odśwież</a>
+    <a class="dismiss">🗙</a>
+</div>
