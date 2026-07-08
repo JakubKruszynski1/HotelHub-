@@ -25,6 +25,7 @@ public sealed class BookingFacade
     private static readonly object SyncRoot = new();
 
     private readonly HotelRegistry _registry = HotelRegistry.Instance;
+    private readonly AccountService _accountService = new();
     private readonly AvailabilityService _availability = new();
     private readonly PaymentService _payment = new();
     private readonly InvoiceService _invoice = new();
@@ -105,12 +106,102 @@ public sealed class BookingFacade
                 (RoomType.Standard, 203),
                 (RoomType.Apartment, 204));
 
-            RegisterGuest("Jan", "Kowalski", "jan.kowalski@example.com");
-            RegisterGuest("Anna", "Nowak", "anna.nowak@example.com");
+            var jan = RegisterGuest("Jan", "Kowalski", "jan.kowalski@example.com");
+            var anna = RegisterGuest("Anna", "Nowak", "anna.nowak@example.com");
+
+            // Konta demonstracyjne (dane logowania w README i na ekranie logowania).
+            _accountService.CreateGuestAccount("jan.kowalski", "Gosc1234!", jan);
+            _accountService.CreateGuestAccount("anna.nowak", "Gosc1234!", anna);
+            _accountService.CreateReceptionAccount("admin", "admin123");
         }
     }
 
     public Guest? FindGuestByEmail(string email) => _registry.FindGuestByEmail(email);
+
+    public Guest? FindGuestById(Guid guestId) => _registry.FindGuestById(guestId);
+
+    public UserAccount? FindAccountByLogin(string login) => _registry.FindAccountByLogin(login);
+
+    /// <summary>
+    /// Samodzielna rejestracja konta gościa: tworzy jednocześnie encję
+    /// <see cref="Guest"/> i powiązane <see cref="UserAccount"/> (rola Guest).
+    /// Konta recepcji powstają wyłącznie z seeda — nigdy z UI.
+    /// </summary>
+    public OperationResult RegisterGuestAccount(
+        string login, string password, string firstName, string lastName, string email)
+    {
+        lock (SyncRoot)
+        {
+            try
+            {
+                UserAccount.ValidateLogin(login);
+                UserAccount.ValidatePassword(password);
+
+                if (_registry.FindAccountByLogin(login) is not null)
+                {
+                    return OperationResult.Fail($"Login '{login.Trim()}' jest już zajęty.");
+                }
+
+                var guest = new Guest(firstName, lastName, email);
+                _registry.AddGuest(guest);
+                _accountService.CreateGuestAccount(login, password, guest);
+                return OperationResult.Ok($"Utworzono konto '{login.Trim()}'.");
+            }
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+            {
+                return OperationResult.Fail(exception.Message);
+            }
+        }
+    }
+
+    /// <summary>Weryfikuje login i hasło; zwraca konto przy powodzeniu, inaczej null.</summary>
+    public UserAccount? VerifyCredentials(string login, string password)
+    {
+        lock (SyncRoot)
+        {
+            return _accountService.VerifyCredentials(login, password);
+        }
+    }
+
+    /// <summary>Zmienia hasło konta po weryfikacji dotychczasowego.</summary>
+    public OperationResult ChangePassword(string login, string currentPassword, string newPassword)
+    {
+        lock (SyncRoot)
+        {
+            return _accountService.ChangePassword(login, currentPassword, newPassword);
+        }
+    }
+
+    /// <summary>Aktualizuje dane profilu gościa (portal gościa i panel recepcji).</summary>
+    public OperationResult UpdateGuestProfile(Guid guestId, string firstName, string lastName, string email)
+    {
+        lock (SyncRoot)
+        {
+            var guest = _registry.FindGuestById(guestId);
+
+            if (guest is null)
+            {
+                return OperationResult.Fail("Nie znaleziono gościa o podanym identyfikatorze.");
+            }
+
+            var other = _registry.FindGuestByEmail(email);
+
+            if (other is not null && other.Id != guestId)
+            {
+                return OperationResult.Fail($"Adres e-mail {email?.Trim()} jest już używany przez innego gościa.");
+            }
+
+            try
+            {
+                guest.UpdateProfile(firstName, lastName, email);
+                return OperationResult.Ok("Zapisano zmiany profilu.");
+            }
+            catch (ArgumentException exception)
+            {
+                return OperationResult.Fail(exception.Message);
+            }
+        }
+    }
 
     public Reservation? FindReservationByShortId(string shortId) =>
         _registry.FindReservationByShortId(shortId);

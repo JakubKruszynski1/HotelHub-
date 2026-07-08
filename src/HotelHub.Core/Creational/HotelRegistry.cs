@@ -20,6 +20,7 @@ public sealed class HotelRegistry
     private readonly List<Room> _rooms = [];
     private readonly List<Guest> _guests = [];
     private readonly List<Reservation> _reservations = [];
+    private readonly List<UserAccount> _accounts = [];
 
     private HotelRegistry()
     {
@@ -89,6 +90,46 @@ public sealed class HotelRegistry
 
             _reservations.Add(reservation);
         }
+    }
+
+    public IReadOnlyCollection<UserAccount> Accounts
+    {
+        get { lock (_syncRoot) { return _accounts.AsReadOnly(); } }
+    }
+
+    /// <summary>Dodaje konto użytkownika; login musi być unikalny (bez rozróżniania wielkości liter).</summary>
+    public void AddAccount(UserAccount account)
+    {
+        ArgumentNullException.ThrowIfNull(account);
+
+        lock (_syncRoot)
+        {
+            if (_accounts.Any(a => string.Equals(a.Login, account.Login, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException($"Login '{account.Login}' jest już zajęty.");
+            }
+
+            _accounts.Add(account);
+        }
+    }
+
+    public UserAccount? FindAccountByLogin(string login)
+    {
+        lock (_syncRoot)
+        {
+            return _accounts.FirstOrDefault(
+                a => string.Equals(a.Login, login?.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    public UserAccount? FindAccountByGuestId(Guid guestId)
+    {
+        lock (_syncRoot) { return _accounts.FirstOrDefault(a => a.GuestId == guestId); }
+    }
+
+    public Guest? FindGuestById(Guid guestId)
+    {
+        lock (_syncRoot) { return _guests.FirstOrDefault(g => g.Id == guestId); }
     }
 
     public Room? FindRoomByNumber(int number)

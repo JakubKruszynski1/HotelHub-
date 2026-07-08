@@ -7,4 +7,9 @@
     <RootNamespace>HotelHub</RootNamespace>
   </PropertyGroup>
 
+  <!-- Shared framework ASP.NET Core — wyłącznie dla PasswordHasher<T> (zero paczek NuGet). -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
 </Project>

@@ -9,11 +9,15 @@ public sealed class Guest
     public const int MaxNameLength = 50;
 
     public Guid Id { get; }
-    public string FirstName { get; }
-    public string LastName { get; }
-    public string Email { get; }
+    public string FirstName { get; private set; }
+    public string LastName { get; private set; }
+    public string Email { get; private set; }
 
     public string FullName => $"{FirstName} {LastName}";
+
+    /// <summary>Inicjały gościa do wyświetlania w pasku użytkownika.</summary>
+    public string Initials =>
+        $"{char.ToUpperInvariant(FirstName[0])}{char.ToUpperInvariant(LastName[0])}";
 
     public Guest(string firstName, string lastName, string email)
         : this(Guid.NewGuid(), firstName, lastName, email)
@@ -23,6 +27,14 @@ public sealed class Guest
     public Guest(Guid id, string firstName, string lastName, string email)
     {
         Id = id;
+        FirstName = ValidateName(firstName, "Imię");
+        LastName = ValidateName(lastName, "Nazwisko");
+        Email = ValidateEmail(email);
+    }
+
+    /// <summary>Aktualizuje dane profilu z pełną walidacją (edycja profilu / panel recepcji).</summary>
+    public void UpdateProfile(string firstName, string lastName, string email)
+    {
         FirstName = ValidateName(firstName, "Imię");
         LastName = ValidateName(lastName, "Nazwisko");
         Email = ValidateEmail(email);
