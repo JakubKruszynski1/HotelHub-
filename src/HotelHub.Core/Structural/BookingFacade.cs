@@ -141,7 +141,7 @@ public sealed class BookingFacade : IBookingFacade
             var jan = RegisterGuest("Jan", "Kowalski", "jan.kowalski@example.com");
             var anna = RegisterGuest("Anna", "Nowak", "anna.nowak@example.com");
 
-            // Konta demonstracyjne (dane logowania w README i na ekranie logowania).
+            // Konta demonstracyjne (dane logowania w README; ekran logowania pokazuje tylko konta gości).
             _accountService.CreateGuestAccount("jan.kowalski", "Gosc1234!", jan);
             _accountService.CreateGuestAccount("anna.nowak", "Gosc1234!", anna);
             _accountService.CreateReceptionAccount("admin", "admin123");

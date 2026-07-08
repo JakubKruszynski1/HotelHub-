@@ -10,6 +10,9 @@
 hotelhub-data.json
 audit.log
 
+# Lokalna konfiguracja narzedzi deweloperskich
+.claude/
+
 # User-specific files
 *.rsuser
 *.suo
