@@ -1,0 +1,154 @@
+@page "/rooms"
+@inject IBookingFacade Facade
+
+<PageTitle>Pokoje — Hotel Pod Różą</PageTitle>
+
+<h1>Nasze pokoje</h1>
+<p class="muted">Wybierz termin, aby zobaczyć wyłącznie pokoje dostępne w czasie Twojego pobytu.</p>
+
+<div class="card" style="margin-bottom:1.5rem">
+    <div class="row">
+        <div class="field" style="margin:0">
+            <label for="fFrom">Zameldowanie</label>
+            <input id="fFrom" type="date" @bind="_from" />
+        </div>
+        <div class="field" style="margin:0">
+            <label for="fTo">Wymeldowanie</label>
+            <input id="fTo" type="date" @bind="_to" />
+        </div>
+        <div class="field" style="margin:0">
+            <label for="fType">Typ pokoju</label>
+            <select id="fType" @bind="_typeFilter">
+                <option value="">wszystkie</option>
+                <option value="@RoomType.Standard">Standard</option>
+                <option value="@RoomType.Deluxe">Deluxe</option>
+                <option value="@RoomType.Apartment">Apartament</option>
+            </select>
+        </div>
+        <div class="field" style="margin:0;max-width:120px">
+            <label for="fGuests">Osoby</label>
+            <select id="fGuests" @bind="_minCapacity">
+                @for (var i = 1; i <= 6; i++)
+                {
+                    <option value="@i">@i+</option>
+                }
+            </select>
+        </div>
+        <button class="btn btn-primary" @onclick="ApplyDates">Pokaż dostępne</button>
+        @if (_stay is not null)
+        {
+            <button class="btn btn-ghost" @onclick="ClearDates">Wyczyść termin</button>
+        }
+    </div>
+
+    @if (_dateError is not null)
+    {
+        <div class="alert alert-error" style="margin-bottom:0">@_dateError</div>
+    }
+    @if (_stay is not null)
+    {
+        <div class="alert alert-info" style="margin-bottom:0">
+            Pokazujemy pokoje wolne w terminie <strong>@Fmt.Range(_stay)</strong> (@Fmt.Nights(_stay.Nights)).
+        </div>
+    }
+</div>
+
+@if (VisibleRooms.Count == 0)
+{
+    <div class="empty-state">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M2 4v16" /><path d="M2 8h18a2 2 0 0 1 2 2v10" /><path d="M2 17h20" /><path d="M6 8v9" />
+        </svg>
+        <div class="empty-title">Brak pokoi spełniających kryteria</div>
+        Zmień termin lub filtry, aby zobaczyć więcej propozycji.
+    </div>
+}
+else
+{
+    <div class="room-grid">
+        @foreach (var room in VisibleRooms)
+        {
+            <RoomCard Room="room" />
+        }
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "from")]
+    public string? FromQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "to")]
+    public string? ToQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "guests")]
+    public int? GuestsQuery { get; set; }
+
+    private DateTime _from = DateTime.Today.AddDays(1);
+    private DateTime _to = DateTime.Today.AddDays(3);
+    private string _typeFilter = string.Empty;
+    private int _minCapacity = 1;
+    private DateRange? _stay;
+    private string? _dateError;
+
+    protected override void OnInitialized()
+    {
+        if (DateTime.TryParse(FromQuery, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var from))
+        {
+            _from = from;
+        }
+
+        if (DateTime.TryParse(ToQuery, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var to))
+        {
+            _to = to;
+        }
+
+        if (GuestsQuery is > 0 and <= 10)
+        {
+            _minCapacity = GuestsQuery.Value;
+        }
+
+        if (FromQuery is not null || ToQuery is not null)
+        {
+            ApplyDates();
+        }
+    }
+
+    private IReadOnlyList<Room> VisibleRooms
+    {
+        get
+        {
+            var rooms = _stay is null
+                ? Facade.Rooms.Where(r => !r.IsOutOfService)
+                : Facade.GetAvailableRooms(_stay);
+
+            return rooms
+                .Where(r => _typeFilter.Length == 0 || r.Type.ToString() == _typeFilter)
+                .Where(r => r.Capacity >= _minCapacity)
+                .OrderBy(r => r.Number)
+                .ToList();
+        }
+    }
+
+    private void ApplyDates()
+    {
+        _dateError = null;
+        _stay = null;
+
+        try
+        {
+            _stay = new DateRange(_from, _to);
+        }
+        catch (ArgumentException exception)
+        {
+            _dateError = exception.Message;
+        }
+    }
+
+    private void ClearDates()
+    {
+        _stay = null;
+        _dateError = null;
+    }
+}

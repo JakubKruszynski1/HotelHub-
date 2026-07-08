@@ -1,0 +1,32 @@
+@* Karta pokoju w katalogu i na stronie głównej. *@
+
+<article class="room-card">
+    <a href="/rooms/@Room.Number"><img src="@Room.ImagePath" alt="@Room.TypeName — pokój @Room.Number" /></a>
+    <div class="room-card-body">
+        <h3>Pokój @Room.Number · @Room.TypeName</h3>
+        <div class="muted small">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 style="vertical-align:-2px"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" /><circle cx="10" cy="7" r="4" /></svg>
+            do @Room.Capacity os. · piętro @Room.Floor
+        </div>
+        <div>
+            @foreach (var amenity in Room.Amenities.Take(4))
+            {
+                <span class="pill">@amenity</span>
+            }
+            @if (Room.Amenities.Count > 4)
+            {
+                <span class="pill">+@(Room.Amenities.Count - 4)</span>
+            }
+        </div>
+        <div class="room-price">
+            <span><span class="amount">@Fmt.Money(Room.BasePricePerNight)</span> <span class="per">od / noc</span></span>
+            <a class="btn btn-primary btn-sm" href="/rooms/@Room.Number">Szczegóły</a>
+        </div>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public Room Room { get; set; } = default!;
+}

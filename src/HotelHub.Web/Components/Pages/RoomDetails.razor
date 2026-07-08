@@ -1,0 +1,121 @@
+@page "/rooms/{Number:int}"
+@inject IBookingFacade Facade
+
+<PageTitle>Pokój @Number — Hotel Pod Różą</PageTitle>
+
+@if (_room is null)
+{
+    <div class="empty-state">
+        <div class="empty-title">Nie znaleziono pokoju</div>
+        <p>Pokój o numerze @Number nie jest dostępny w naszej ofercie.</p>
+        <a class="btn btn-primary" href="/rooms">Wróć do katalogu</a>
+    </div>
+}
+else
+{
+    <div class="row-between">
+        <div>
+            <h1>Pokój @_room.Number · @_room.TypeName</h1>
+            <p class="muted">do @_room.Capacity os. · piętro @_room.Floor</p>
+        </div>
+        <a class="btn btn-gold btn-lg" href="/book/@_room.Number">Zarezerwuj</a>
+    </div>
+
+    <div class="grid grid-2" style="margin-top:1rem">
+        <div>
+            <img class="gallery-main" src="@_activeImage" alt="Pokój @_room.Number" />
+            <div class="gallery-thumbs">
+                @foreach (var image in Gallery)
+                {
+                    <img src="@image" class="@(image == _activeImage ? "active" : "")"
+                         alt="Miniatura" @onclick="() => _activeImage = image" />
+                }
+            </div>
+
+            <div class="card" style="margin-top:1.25rem">
+                <h3>O pokoju</h3>
+                <p style="margin:0">@_room.Description</p>
+            </div>
+
+            <div class="card">
+                <h3>Udogodnienia</h3>
+                <div class="grid grid-2" style="gap:.4rem">
+                    @foreach (var amenity in _room.Amenities)
+                    {
+                        <div>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16a34a"
+                                 stroke-width="3" style="vertical-align:-2px"><polyline points="20 6 9 17 4 12" /></svg>
+                            @amenity
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div>
+            <div class="card">
+                <h3>Cennik</h3>
+                <table class="summary-table">
+                    <tbody>
+                        <tr>
+                            <th>Cena standardowa</th>
+                            <td>@Fmt.Money(_room.BasePricePerNight) / noc</td>
+                        </tr>
+                        <tr>
+                            <th>Sezon wysoki (lipiec–sierpień)</th>
+                            <td>×1,5 → @Fmt.Money(_room.BasePricePerNight.Amount * 1.5m) / noc</td>
+                        </tr>
+                        <tr>
+                            <th>Noce weekendowe (pt/sob)</th>
+                            <td>×1,2 → @Fmt.Money(_room.BasePricePerNight.Amount * 1.2m) / noc</td>
+                        </tr>
+                        <tr>
+                            <th>Kod rabatowy PROMO20</th>
+                            <td>−20% od całości pobytu</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p class="small muted" style="margin:.75rem 0 0">
+                    Taryfa dobierana jest automatycznie na podstawie terminu pobytu.
+                </p>
+            </div>
+
+            <div class="card">
+                <h3>Dostępność</h3>
+                <p class="small muted">Dni zajęte są wyszarzone.</p>
+                <div class="stack">
+                    <CalendarMonth Year="@DateTime.Today.Year" Month="@DateTime.Today.Month"
+                                   OccupiedDays="@OccupiedThisMonth" />
+                    <CalendarMonth Year="@NextMonth.Year" Month="@NextMonth.Month"
+                                   OccupiedDays="@OccupiedNextMonth" />
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public int Number { get; set; }
+
+    private Room? _room;
+    private string _activeImage = string.Empty;
+
+    private static DateTime NextMonth => new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(1);
+
+    private IReadOnlyList<string> Gallery =>
+        _room is null ? [] : [_room.ImagePath, "img/rooms/bathroom.svg", "img/rooms/detail.svg"];
+
+    private IReadOnlyCollection<DateTime> OccupiedThisMonth =>
+        Facade.GetOccupiedDays(Number, DateTime.Today.Year, DateTime.Today.Month);
+
+    private IReadOnlyCollection<DateTime> OccupiedNextMonth =>
+        Facade.GetOccupiedDays(Number, NextMonth.Year, NextMonth.Month);
+
+    protected override void OnParametersSet()
+    {
+        var room = Facade.FindRoomByNumber(Number);
+        _room = room is { IsOutOfService: false } ? room : null;
+        _activeImage = _room?.ImagePath ?? string.Empty;
+    }
+}

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <defs>
+    <linearGradient id="dcity" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#31456b"/>
+      <stop offset="1" stop-color="#0f1c33"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="380" fill="#20304c"/>
+  <rect y="380" width="800" height="120" fill="#3d3327"/>
+  <rect y="374" width="800" height="8" fill="#54452f"/>
+  <!-- panorama miasta -->
+  <rect x="470" y="50" width="260" height="240" rx="6" fill="url(#dcity)" stroke="#c9a227" stroke-width="6"/>
+  <g fill="#c9a227" opacity=".75">
+    <rect x="495" y="170" width="26" height="120"/>
+    <rect x="535" y="130" width="30" height="160"/>
+    <rect x="580" y="190" width="22" height="100"/>
+    <rect x="615" y="110" width="34" height="180"/>
+    <rect x="663" y="160" width="26" height="130"/>
+  </g>
+  <circle cx="700" cy="86" r="14" fill="#f2e2ac"/>
+  <!-- kinkiety -->
+  <g fill="#c9a227">
+    <rect x="120" y="120" width="12" height="34" rx="4"/>
+    <rect x="380" y="120" width="12" height="34" rx="4"/>
+  </g>
+  <ellipse cx="126" cy="112" rx="20" ry="10" fill="#f2e2ac" opacity=".8"/>
+  <ellipse cx="386" cy="112" rx="20" ry="10" fill="#f2e2ac" opacity=".8"/>
+  <!-- łóżko deluxe -->
+  <rect x="80" y="180" width="360" height="80" rx="12" fill="#c9a227"/>
+  <rect x="92" y="192" width="336" height="56" rx="8" fill="#101c31"/>
+  <rect x="90" y="252" width="340" height="124" rx="10" fill="#2c3f60"/>
+  <rect x="90" y="252" width="340" height="48" rx="10" fill="#f5efdd"/>
+  <rect x="108" y="214" width="130" height="42" rx="10" fill="#f9f5e7"/>
+  <rect x="282" y="214" width="130" height="42" rx="10" fill="#f9f5e7"/>
+  <rect x="90" y="300" width="340" height="26" fill="#c9a227" opacity=".9"/>
+  <rect x="84" y="372" width="18" height="22" fill="#0d1729"/>
+  <rect x="418" y="372" width="18" height="22" fill="#0d1729"/>
+  <!-- fotel -->
+  <path d="M600 330 q0 -44 44 -44 h30 q44 0 44 44 v46 h-118 Z" fill="#8c7442"/>
+  <rect x="600" y="376" width="118" height="14" fill="#54452f"/>
+</svg>

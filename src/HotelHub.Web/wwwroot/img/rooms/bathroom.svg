@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <rect width="800" height="500" fill="#e9eef1"/>
+  <g stroke="#d3dde2" stroke-width="2">
+    <line x1="0" y1="120" x2="800" y2="120"/>
+    <line x1="0" y1="240" x2="800" y2="240"/>
+    <line x1="200" y1="0" x2="200" y2="360"/>
+    <line x1="400" y1="0" x2="400" y2="360"/>
+    <line x1="600" y1="0" x2="600" y2="360"/>
+  </g>
+  <rect y="360" width="800" height="140" fill="#c3ced4"/>
+  <rect y="354" width="800" height="8" fill="#9fadb5"/>
+  <!-- lustro -->
+  <rect x="120" y="60" width="180" height="150" rx="10" fill="#bcd2dd" stroke="#c9a227" stroke-width="6"/>
+  <path d="M150 190 L260 80" stroke="#e6f0f5" stroke-width="14" opacity=".8"/>
+  <!-- umywalka -->
+  <rect x="110" y="250" width="200" height="20" rx="6" fill="#f8fafb"/>
+  <path d="M140 270 h140 q-8 44 -70 44 t-70 -44 Z" fill="#ffffff" stroke="#9fadb5" stroke-width="3"/>
+  <rect x="200" y="222" width="20" height="30" rx="6" fill="#c9a227"/>
+  <rect x="180" y="314" width="60" height="46" fill="#9fadb5"/>
+  <!-- wanna -->
+  <rect x="420" y="270" width="320" height="90" rx="34" fill="#ffffff" stroke="#9fadb5" stroke-width="4"/>
+  <rect x="440" y="250" width="280" height="26" rx="12" fill="#f2f6f8" stroke="#9fadb5" stroke-width="3"/>
+  <rect x="560" y="180" width="10" height="76" fill="#c9a227"/>
+  <path d="M565 180 q40 0 40 34" stroke="#c9a227" stroke-width="10" fill="none"/>
+  <!-- ręczniki -->
+  <rect x="660" y="90" width="80" height="16" rx="8" fill="#c9a227"/>
+  <rect x="668" y="106" width="64" height="70" rx="6" fill="#1a2b4a"/>
+  <rect x="668" y="140" width="64" height="6" fill="#c9a227"/>
+</svg>

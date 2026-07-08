@@ -1,14 +1,102 @@
 @page "/"
 @inject IBookingFacade Facade
+@inject NavigationManager Navigation
 
 <PageTitle>Hotel Pod Różą — HotelHub</PageTitle>
 
 <section class="hero">
+    <svg class="hero-art" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g fill="none" stroke="#c9a227" stroke-width="2" opacity=".6">
+            <rect x="120" y="80" width="220" height="300" rx="8" />
+            <rect x="150" y="110" width="50" height="50" />
+            <rect x="230" y="110" width="50" height="50" />
+            <rect x="150" y="190" width="50" height="50" />
+            <rect x="230" y="190" width="50" height="50" />
+            <rect x="150" y="270" width="50" height="50" />
+            <rect x="230" y="270" width="50" height="50" />
+        </g>
+    </svg>
     <div class="hero-inner">
         <h1>Hotel Pod Różą</h1>
-        <p class="hero-sub">Elegancki wypoczynek w sercu Krakowa — @Facade.Rooms.Count(r => !r.IsOutOfService) pokoi czeka na Ciebie.</p>
-        <a class="btn btn-gold btn-lg" href="/rooms">Zobacz pokoje</a>
+        <p class="hero-sub">
+            Elegancki wypoczynek w sercu Krakowa. Zarezerwuj pokój online —
+            potwierdzenie otrzymasz od naszej recepcji.
+        </p>
+
+        <div class="search-bar">
+            <div class="field">
+                <label for="sFrom">Zameldowanie</label>
+                <input id="sFrom" type="date" @bind="_from" />
+            </div>
+            <div class="field">
+                <label for="sTo">Wymeldowanie</label>
+                <input id="sTo" type="date" @bind="_to" />
+            </div>
+            <div class="field" style="max-width:140px">
+                <label for="sGuests">Liczba osób</label>
+                <select id="sGuests" @bind="_guests">
+                    @for (var i = 1; i <= 6; i++)
+                    {
+                        <option value="@i">@i</option>
+                    }
+                </select>
+            </div>
+            <button class="btn btn-gold" @onclick="Search">Szukaj pokoju</button>
+        </div>
     </div>
 </section>
 
-<p class="muted">Pełna strona główna z wyszukiwarką i wyróżnionymi pokojami — w przygotowaniu.</p>
+<section>
+    <div class="row-between" style="margin-bottom:1rem">
+        <h2>Wyróżnione pokoje</h2>
+        <a class="btn btn-outline btn-sm" href="/rooms">Wszystkie pokoje</a>
+    </div>
+    <div class="room-grid">
+        @foreach (var room in FeaturedRooms)
+        {
+            <RoomCard Room="room" />
+        }
+    </div>
+</section>
+
+<section style="margin-top:3rem">
+    <h2>Udogodnienia hotelu</h2>
+    <div class="amenity-grid">
+        @foreach (var (icon, label) in HotelAmenities)
+        {
+            <div class="amenity">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">@((MarkupString)icon)</svg>
+                @label
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    private DateTime _from = DateTime.Today.AddDays(1);
+    private DateTime _to = DateTime.Today.AddDays(3);
+    private int _guests = 2;
+
+    private IEnumerable<Room> FeaturedRooms =>
+        Facade.Rooms
+            .Where(r => !r.IsOutOfService)
+            .GroupBy(r => r.Type)
+            .Select(g => g.OrderByDescending(r => r.BasePricePerNight.Amount).First())
+            .OrderByDescending(r => r.BasePricePerNight.Amount)
+            .Take(3);
+
+    private void Search() =>
+        Navigation.NavigateTo(
+            $"/rooms?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}&guests={_guests}");
+
+    private static readonly (string Icon, string Label)[] HotelAmenities =
+    [
+        ("<path d=\"M5 12.55a11 11 0 0 1 14.08 0\"/><path d=\"M1.42 9a16 16 0 0 1 21.16 0\"/><path d=\"M8.53 16.11a6 6 0 0 1 6.95 0\"/><circle cx=\"12\" cy=\"20\" r=\"1\"/>", "Darmowe Wi-Fi w całym hotelu"),
+        ("<rect x=\"3\" y=\"8\" width=\"18\" height=\"12\" rx=\"2\"/><path d=\"M7 8V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2\"/><path d=\"M12 12v4\"/>", "Parking dla gości"),
+        ("<path d=\"M18 8h1a4 4 0 0 1 0 8h-1\"/><path d=\"M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4Z\"/><line x1=\"6\" y1=\"2\" x2=\"6\" y2=\"4\"/><line x1=\"10\" y1=\"2\" x2=\"10\" y2=\"4\"/><line x1=\"14\" y1=\"2\" x2=\"14\" y2=\"4\"/>", "Śniadania do pokoju"),
+        ("<circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M8 14s1.5 2 4 2 4-2 4-2\"/><line x1=\"9\" y1=\"9\" x2=\"9.01\" y2=\"9\"/><line x1=\"15\" y1=\"9\" x2=\"15.01\" y2=\"9\"/>", "Strefa SPA i relaksu"),
+        ("<circle cx=\"12\" cy=\"12\" r=\"10\"/><polyline points=\"12 6 12 12 16 14\"/>", "Recepcja czynna całą dobę"),
+        ("<path d=\"M9.5 21V9a2.5 2.5 0 0 1 5 0v12\"/><path d=\"M4 21V11a8 8 0 0 1 16 0v10\"/><line x1=\"2\" y1=\"21\" x2=\"22\" y2=\"21\"/>", "Klimatyzacja w pokojach")
+    ];
+}

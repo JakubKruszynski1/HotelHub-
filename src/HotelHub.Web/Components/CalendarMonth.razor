@@ -1,0 +1,62 @@
+@* Kalendarz zajętości pokoju na jeden miesiąc — dni zajęte wyszarzone. *@
+
+<div class="calendar">
+    <div class="calendar-head">@MonthTitle</div>
+    <div class="calendar-grid">
+        @foreach (var dow in DayNames)
+        {
+            <div class="dow">@dow</div>
+        }
+        @foreach (var cell in Cells)
+        {
+            <div class="cal-day @(cell.Other ? "other" : "") @(cell.Occupied ? "occupied" : "") @(cell.Today ? "today" : "")">
+                @cell.Day
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly string[] DayNames = ["pn", "wt", "śr", "cz", "pt", "sb", "nd"];
+
+    [Parameter, EditorRequired]
+    public int Year { get; set; }
+
+    [Parameter, EditorRequired]
+    public int Month { get; set; }
+
+    [Parameter, EditorRequired]
+    public IReadOnlyCollection<DateTime> OccupiedDays { get; set; } = [];
+
+    private string MonthTitle =>
+        new DateTime(Year, Month, 1).ToString("MMMM yyyy",
+            System.Globalization.CultureInfo.GetCultureInfo("pl-PL"));
+
+    private record Cell(int Day, bool Other, bool Occupied, bool Today);
+
+    private IEnumerable<Cell> Cells
+    {
+        get
+        {
+            var first = new DateTime(Year, Month, 1);
+            var lead = ((int)first.DayOfWeek + 6) % 7; // poniedziałek jako pierwszy dzień
+            var start = first.AddDays(-lead);
+
+            for (var i = 0; i < 42; i++)
+            {
+                var date = start.AddDays(i);
+
+                if (i >= 35 && date.Month != Month)
+                {
+                    yield break;
+                }
+
+                yield return new Cell(
+                    date.Day,
+                    date.Month != Month,
+                    OccupiedDays.Contains(date),
+                    date == DateTime.Today);
+            }
+        }
+    }
+}
