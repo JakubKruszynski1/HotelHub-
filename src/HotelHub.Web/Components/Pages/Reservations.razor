@@ -43,27 +43,27 @@ else
                     <td>@reservation.TotalPrice</td>
                     <td><span class="@StatusBadge.CssClass(reservation)">@StatusBadge.Label(reservation)</span></td>
                     <td>
-                        @if (reservation.CanConfirm)
+                        @if (reservation.CanConfirm(Actor))
                         {
                             <button class="btn btn-sm btn-primary me-1 mb-1"
                                     @onclick="() => Confirm(reservation)">Potwierdź</button>
                         }
-                        @if (reservation.CanPay)
+                        @if (reservation.CanPay(Actor))
                         {
                             <button class="btn btn-sm btn-success me-1 mb-1"
                                     @onclick="() => Pay(reservation)">Opłać</button>
                         }
-                        @if (reservation.CanCheckIn)
+                        @if (reservation.CanCheckIn(Actor))
                         {
                             <button class="btn btn-sm btn-info me-1 mb-1"
                                     @onclick="() => CheckIn(reservation)">Zamelduj</button>
                         }
-                        @if (reservation.CanCheckOut)
+                        @if (reservation.CanCheckOut(Actor))
                         {
                             <button class="btn btn-sm btn-dark me-1 mb-1"
                                     @onclick="() => CheckOut(reservation)">Wymelduj</button>
                         }
-                        @if (reservation.CanCancel)
+                        @if (reservation.CanCancel(Actor))
                         {
                             <button class="btn btn-sm btn-outline-danger me-1 mb-1"
                                     @onclick="() => Cancel(reservation)">Anuluj</button>
@@ -76,52 +76,24 @@ else
 }
 
 @code {
+    private static readonly ActorContext Actor = ActorContext.System;
+
     private string? _message;
     private string _messageCss = "alert-success";
 
-    private void Confirm(Reservation reservation)
-    {
-        Facade.ConfirmReservation(reservation);
-        Report(reservation, reservation.CanPay, "została potwierdzona");
-    }
+    private void Confirm(Reservation reservation) => Apply(Facade.ConfirmReservation(reservation));
 
-    private void Pay(Reservation reservation) =>
-        Report(reservation, Facade.PayReservation(reservation), "została opłacona");
+    private void Pay(Reservation reservation) => Apply(Facade.PayReservation(reservation));
 
-    private void Cancel(Reservation reservation)
-    {
-        Facade.CancelReservation(reservation);
-        Report(reservation, !reservation.BlocksRoom, "została anulowana");
-    }
+    private void Cancel(Reservation reservation) => Apply(Facade.CancelReservation(reservation));
 
-    private void CheckIn(Reservation reservation)
-    {
-        Facade.CheckIn(reservation);
-        Report(reservation, reservation.IsCheckedIn, "gość zameldowany");
-    }
+    private void CheckIn(Reservation reservation) => Apply(Facade.CheckIn(reservation));
 
-    private void CheckOut(Reservation reservation)
-    {
-        Facade.CheckOut(reservation);
-        Report(reservation, !reservation.CanCheckOut && !reservation.CanCheckIn && !reservation.CanPay,
-            "gość wymeldowany, pobyt zakończony");
-    }
+    private void CheckOut(Reservation reservation) => Apply(Facade.CheckOut(reservation));
 
-    /// <summary>
-    /// Buduje komunikat wyniku: operację nielegalną wzorzec State odrzuca bez wyjątku,
-    /// więc wynik oceniamy po stanie rezerwacji po wywołaniu.
-    /// </summary>
-    private void Report(Reservation reservation, bool succeeded, string successDescription)
+    private void Apply(OperationResult result)
     {
-        if (succeeded)
-        {
-            _message = $"Rezerwacja {reservation.ShortId}: {successDescription}. Aktualny stan: {reservation.State.Name}.";
-            _messageCss = "alert-success";
-        }
-        else
-        {
-            _message = $"Rezerwacja {reservation.ShortId}: operacja niedozwolona w stanie '{reservation.State.Name}'.";
-            _messageCss = "alert-warning";
-        }
+        _message = result.Message;
+        _messageCss = result.Success ? "alert-success" : "alert-warning";
     }
 }

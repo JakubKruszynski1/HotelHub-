@@ -6,12 +6,18 @@ using HotelHub.Domain.RoomTypes;
 namespace HotelHub.Tests;
 
 /// <summary>
-/// Testy cyklu życia rezerwacji (State): poprawne przejścia stanów
-/// i odrzucanie operacji nielegalnych (bez wyjątków), plus powiadamianie
-/// obserwatorów (Observer) przy zmianach stanu.
+/// Testy cyklu życia rezerwacji (State): poprawne przejścia stanów z kontekstem
+/// wykonującego (rola + właściciel), odrzucanie operacji nielegalnych bez wyjątków
+/// oraz powiadamianie obserwatorów (Observer) przy zmianach stanu.
 /// </summary>
 public class ReservationStateTests
 {
+    private static readonly ActorContext Reception = new("recepcja", UserRole.Reception, null);
+    private static readonly ActorContext StrangerGuest = new("obcy.gosc", UserRole.Guest, Guid.NewGuid());
+
+    private static ActorContext OwnerOf(Reservation reservation) =>
+        new("wlasciciel", UserRole.Guest, reservation.Guest.Id);
+
     [Fact]
     public void NewReservation_StartsInPendingState()
     {
@@ -26,17 +32,17 @@ public class ReservationStateTests
     {
         var reservation = CreateReservation();
 
-        reservation.Confirm();
+        Assert.True(reservation.Confirm(Reception).Success);
         Assert.IsType<ConfirmedState>(reservation.State);
 
-        reservation.Pay();
+        Assert.True(reservation.Pay(OwnerOf(reservation)).Success);
         Assert.IsType<PaidState>(reservation.State);
 
-        reservation.CheckIn();
+        Assert.True(reservation.CheckIn(Reception).Success);
         Assert.True(reservation.IsCheckedIn);
-        Assert.IsType<PaidState>(reservation.State);
+        Assert.IsType<CheckedInState>(reservation.State);
 
-        reservation.CheckOut();
+        Assert.True(reservation.CheckOut(Reception).Success);
         Assert.IsType<CompletedState>(reservation.State);
     }
 
@@ -45,44 +51,105 @@ public class ReservationStateTests
     {
         var reservation = CreateReservation();
 
-        reservation.Pay();
+        var result = reservation.Pay(OwnerOf(reservation));
 
+        Assert.False(result.Success);
         Assert.IsType<PendingState>(reservation.State);
     }
 
     [Fact]
-    public void Cancel_FromPendingAndConfirmed_Succeeds()
+    public void Confirm_ByGuest_IsRejected()
+    {
+        var reservation = CreateReservation();
+
+        var result = reservation.Confirm(OwnerOf(reservation));
+
+        Assert.False(result.Success);
+        Assert.IsType<PendingState>(reservation.State);
+    }
+
+    [Fact]
+    public void Reject_RequiresReceptionAndReason()
+    {
+        var noReason = CreateReservation();
+        Assert.False(noReason.Reject("", Reception).Success);
+        Assert.IsType<PendingState>(noReason.State);
+
+        var byGuest = CreateReservation();
+        Assert.False(byGuest.Reject("Brak wolnych pokoi", OwnerOf(byGuest)).Success);
+        Assert.IsType<PendingState>(byGuest.State);
+
+        var rejected = CreateReservation();
+        Assert.True(rejected.Reject("Awaria instalacji w pokoju", Reception).Success);
+        Assert.IsType<RejectedState>(rejected.State);
+        Assert.Equal("Awaria instalacji w pokoju", rejected.RejectionReason);
+    }
+
+    [Fact]
+    public void Pay_ByReceptionOrStranger_IsRejected()
+    {
+        var reservation = CreateReservation();
+        reservation.Confirm(Reception);
+
+        Assert.False(reservation.Pay(Reception).Success);
+        Assert.False(reservation.Pay(StrangerGuest).Success);
+        Assert.IsType<ConfirmedState>(reservation.State);
+    }
+
+    [Fact]
+    public void Cancel_FromPendingAndConfirmed_ByOwner_Succeeds()
     {
         var pending = CreateReservation();
-        pending.Cancel();
+        Assert.True(pending.Cancel(OwnerOf(pending)).Success);
         Assert.IsType<CancelledState>(pending.State);
 
         var confirmed = CreateReservation();
-        confirmed.Confirm();
-        confirmed.Cancel();
+        confirmed.Confirm(Reception);
+        Assert.True(confirmed.Cancel(OwnerOf(confirmed)).Success);
         Assert.IsType<CancelledState>(confirmed.State);
     }
 
     [Fact]
-    public void Cancel_FromPaid_IsRejected()
+    public void Cancel_ByStrangerGuest_IsRejected()
+    {
+        var reservation = CreateReservation();
+
+        Assert.False(reservation.Cancel(StrangerGuest).Success);
+        Assert.IsType<PendingState>(reservation.State);
+    }
+
+    [Fact]
+    public void Cancel_FromPaid_OnlyByReception()
     {
         var reservation = CreatePaidReservation();
 
-        reservation.Cancel();
-
+        Assert.False(reservation.Cancel(OwnerOf(reservation)).Success);
         Assert.IsType<PaidState>(reservation.State);
+
+        Assert.True(reservation.Cancel(Reception).Success);
+        Assert.IsType<CancelledState>(reservation.State);
     }
 
     [Fact]
     public void CheckIn_WithoutPayment_IsRejected()
     {
         var reservation = CreateReservation();
-        reservation.Confirm();
+        reservation.Confirm(Reception);
 
-        reservation.CheckIn();
+        var result = reservation.CheckIn(Reception);
 
+        Assert.False(result.Success);
         Assert.False(reservation.IsCheckedIn);
         Assert.IsType<ConfirmedState>(reservation.State);
+    }
+
+    [Fact]
+    public void CheckIn_ByGuest_IsRejected()
+    {
+        var reservation = CreatePaidReservation();
+
+        Assert.False(reservation.CheckIn(OwnerOf(reservation)).Success);
+        Assert.IsType<PaidState>(reservation.State);
     }
 
     [Fact]
@@ -90,8 +157,9 @@ public class ReservationStateTests
     {
         var reservation = CreatePaidReservation();
 
-        reservation.CheckOut();
+        var result = reservation.CheckOut(Reception);
 
+        Assert.False(result.Success);
         Assert.IsType<PaidState>(reservation.State);
     }
 
@@ -99,14 +167,29 @@ public class ReservationStateTests
     public void CancelledReservation_HasNoTransitionsAndDoesNotBlockRoom()
     {
         var reservation = CreateReservation();
-        reservation.Cancel();
+        reservation.Cancel(OwnerOf(reservation));
 
-        reservation.Confirm();
-        reservation.Pay();
-        reservation.CheckIn();
-        reservation.CheckOut();
+        Assert.False(reservation.Confirm(Reception).Success);
+        Assert.False(reservation.Pay(OwnerOf(reservation)).Success);
+        Assert.False(reservation.CheckIn(Reception).Success);
+        Assert.False(reservation.CheckOut(Reception).Success);
 
         Assert.IsType<CancelledState>(reservation.State);
+        Assert.False(reservation.BlocksRoom);
+        Assert.False(reservation.CountsTowardRevenue);
+    }
+
+    [Fact]
+    public void RejectedReservation_HasNoTransitionsAndDoesNotBlockRoom()
+    {
+        var reservation = CreateReservation();
+        reservation.Reject("Pokój wyłączony z użytku", Reception);
+
+        Assert.False(reservation.Confirm(Reception).Success);
+        Assert.False(reservation.Pay(OwnerOf(reservation)).Success);
+        Assert.False(reservation.Cancel(Reception).Success);
+
+        Assert.IsType<RejectedState>(reservation.State);
         Assert.False(reservation.BlocksRoom);
         Assert.False(reservation.CountsTowardRevenue);
     }
@@ -115,15 +198,30 @@ public class ReservationStateTests
     public void CompletedReservation_HasNoTransitionsAndCountsTowardRevenue()
     {
         var reservation = CreatePaidReservation();
-        reservation.CheckIn();
-        reservation.CheckOut();
+        reservation.CheckIn(Reception);
+        reservation.CheckOut(Reception);
 
-        reservation.Confirm();
-        reservation.Pay();
-        reservation.Cancel();
+        Assert.False(reservation.Confirm(Reception).Success);
+        Assert.False(reservation.Pay(OwnerOf(reservation)).Success);
+        Assert.False(reservation.Cancel(Reception).Success);
 
         Assert.IsType<CompletedState>(reservation.State);
         Assert.True(reservation.CountsTowardRevenue);
+    }
+
+    [Fact]
+    public void Transitions_AreRecordedInHistoryWithActor()
+    {
+        var reservation = CreateReservation();
+
+        reservation.Confirm(Reception);
+        reservation.Pay(OwnerOf(reservation));
+
+        Assert.Equal(2, reservation.History.Count);
+        Assert.Equal("recepcja", reservation.History[0].ActorLogin);
+        Assert.Equal("Potwierdzona", reservation.History[0].StateName);
+        Assert.Equal("wlasciciel", reservation.History[1].ActorLogin);
+        Assert.Equal("Opłacona", reservation.History[1].StateName);
     }
 
     [Fact]
@@ -133,11 +231,11 @@ public class ReservationStateTests
         var observer = new RecordingObserver();
         reservation.Attach(observer);
 
-        reservation.Confirm();
-        reservation.Pay();
+        reservation.Confirm(Reception);
+        reservation.Pay(OwnerOf(reservation));
 
         Assert.Equal(2, observer.Events.Count);
-        Assert.Contains("Rezerwacja potwierdzona", observer.Events);
+        Assert.Contains("Rezerwacja potwierdzona przez recepcję", observer.Events);
         Assert.Contains("Rezerwacja opłacona", observer.Events);
     }
 
@@ -149,7 +247,7 @@ public class ReservationStateTests
         reservation.Attach(observer);
         reservation.Detach(observer);
 
-        reservation.Confirm();
+        reservation.Confirm(Reception);
 
         Assert.Empty(observer.Events);
     }
@@ -165,8 +263,8 @@ public class ReservationStateTests
     private static Reservation CreatePaidReservation()
     {
         var reservation = CreateReservation();
-        reservation.Confirm();
-        reservation.Pay();
+        reservation.Confirm(Reception);
+        reservation.Pay(OwnerOf(reservation));
         return reservation;
     }
 

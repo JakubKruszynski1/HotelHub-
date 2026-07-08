@@ -215,10 +215,16 @@ public sealed class ConsoleMenu
             return;
         }
 
-        if (_facade.PayReservation(reservation))
+        var result = _facade.PayReservation(reservation);
+
+        if (result.Success)
         {
-            ConsoleRenderer.Success("Rezerwacja została opłacona.");
+            ConsoleRenderer.Success(result.Message);
             Console.Write(_facade.GetInvoice(reservation));
+        }
+        else
+        {
+            ConsoleRenderer.Info(result.Message);
         }
     }
 
@@ -228,7 +234,7 @@ public sealed class ConsoleMenu
 
         if (reservation is not null)
         {
-            _facade.CancelReservation(reservation);
+            ConsoleRenderer.Info(_facade.CancelReservation(reservation).Message);
         }
     }
 
@@ -245,14 +251,11 @@ public sealed class ConsoleMenu
         Console.WriteLine("2. Wymelduj (check-out)");
         var choice = InputReader.ReadInt("Wybierz operację: ", 1, 2);
 
-        if (choice == 1)
-        {
-            _facade.CheckIn(reservation);
-        }
-        else
-        {
-            _facade.CheckOut(reservation);
-        }
+        var result = choice == 1
+            ? _facade.CheckIn(reservation)
+            : _facade.CheckOut(reservation);
+
+        ConsoleRenderer.Info(result.Message);
     }
 
     private void ShowAllReservations()

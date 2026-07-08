@@ -7,15 +7,21 @@ namespace HotelHub.Domain;
 
 /// <summary>
 /// Rezerwacja pokoju hotelowego dla gościa w zadanym terminie.
-/// Wzorzec: State (Context) — trzyma <see cref="IReservationState"/> i deleguje do niego operacje.
+/// Wzorzec: State (Context) — trzyma <see cref="IReservationState"/> i deleguje do niego
+/// operacje wraz z kontekstem wykonującego (rola + gość).
 /// Wzorzec: Observer (Subject) — powiadamia subskrybentów przy każdej zmianie stanu.
 /// Enkapsulacja: settery prywatne, modyfikacje wyłącznie przez metody domenowe.
 /// </summary>
 public sealed class Reservation
 {
     private readonly List<IReservationObserver> _observers = [];
+    private readonly List<StateChange> _history = [];
 
     public Guid Id { get; }
+
+    /// <summary>Czytelny numer rezerwacji w formacie RES-2026-0001, nadawany przez rejestr.</summary>
+    public string ReservationNumber { get; private set; } = string.Empty;
+
     public Guest Guest { get; }
 
     /// <summary>Pokój — może być opakowany dekoratorami usług dodatkowych.</summary>
@@ -31,13 +37,22 @@ public sealed class Reservation
     /// <summary>Bieżący stan cyklu życia rezerwacji (State).</summary>
     public IReservationState State { get; private set; }
 
+    /// <summary>Powód odrzucenia — obowiązkowy przy przejściu do stanu Odrzucona.</summary>
+    public string? RejectionReason { get; private set; }
+
+    /// <summary>Czas utworzenia rezerwacji.</summary>
+    public DateTime CreatedAt { get; private set; } = DateTime.Now;
+
+    /// <summary>Historia przejść stanów ze znacznikami czasu i wykonawcą (dziennik zdarzeń).</summary>
+    public IReadOnlyList<StateChange> History => _history.AsReadOnly();
+
     /// <summary>Czy gość jest aktualnie zameldowany.</summary>
-    public bool IsCheckedIn { get; private set; }
+    public bool IsCheckedIn => State is CheckedInState;
 
     /// <summary>Bazowy pokój po zdjęciu wszystkich dekoratorów.</summary>
     public Room BaseRoom => RoomExtraDecorator.Unwrap(Room);
 
-    /// <summary>Skrócony identyfikator do wyświetlania i wyszukiwania w konsoli.</summary>
+    /// <summary>Skrócony identyfikator techniczny.</summary>
     public string ShortId => Id.ToString()[..8];
 
     /// <summary>Czy rezerwacja blokuje pokój w swoim terminie (deleguje do stanu).</summary>
@@ -48,14 +63,6 @@ public sealed class Reservation
 
     /// <summary>Usługi dodatkowe można modyfikować tylko przed opłaceniem.</summary>
     public bool CanModifyExtras => State is PendingState or ConfirmedState;
-
-    // --- Operacje dozwolone w bieżącym stanie (State) — sterują widocznością akcji w UI ---
-
-    public bool CanConfirm => State is PendingState;
-    public bool CanPay => State is ConfirmedState;
-    public bool CanCancel => State is PendingState or ConfirmedState;
-    public bool CanCheckIn => State is PaidState && !IsCheckedIn;
-    public bool CanCheckOut => State is PaidState && IsCheckedIn;
 
     public Reservation(Guest guest, IRoom room, DateRange stay, IPricingStrategy? pricing = null)
         : this(Guid.NewGuid(), guest, room, stay, pricing)
@@ -73,33 +80,70 @@ public sealed class Reservation
         State = new PendingState();
     }
 
-    // --- Operacje cyklu życia — delegowane do bieżącego stanu (State) ---
+    // --- Operacje cyklu życia — delegowane do bieżącego stanu (State) z kontekstem wykonującego ---
 
-    public void Confirm() => State.Confirm(this);
-    public void Pay() => State.Pay(this);
-    public void Cancel() => State.Cancel(this);
-    public void CheckIn() => State.CheckIn(this);
-    public void CheckOut() => State.CheckOut(this);
+    public OperationResult Confirm(ActorContext? actor = null) => State.Confirm(this, actor ?? ActorContext.System);
+    public OperationResult Reject(string reason, ActorContext? actor = null) => State.Reject(this, actor ?? ActorContext.System, reason);
+    public OperationResult Pay(ActorContext? actor = null) => State.Pay(this, actor ?? ActorContext.System);
+    public OperationResult Cancel(ActorContext? actor = null) => State.Cancel(this, actor ?? ActorContext.System);
+    public OperationResult CheckIn(ActorContext? actor = null) => State.CheckIn(this, actor ?? ActorContext.System);
+    public OperationResult CheckOut(ActorContext? actor = null) => State.CheckOut(this, actor ?? ActorContext.System);
 
-    /// <summary>Przejście do nowego stanu z powiadomieniem obserwatorów.</summary>
-    public void TransitionTo(IReservationState newState, string eventDescription)
+    // --- Operacje dozwolone w bieżącym stanie dla danego wykonawcy — sterują widocznością akcji w UI ---
+
+    public bool CanConfirm(ActorContext actor) => State is PendingState && actor.CanActAsReception;
+
+    public bool CanReject(ActorContext actor) => State is PendingState && actor.CanActAsReception;
+
+    public bool CanPay(ActorContext actor) =>
+        State is ConfirmedState && actor.IsOwnerOf(this) && (actor.IsGuest || actor.IsSystem);
+
+    public bool CanCancel(ActorContext actor) =>
+        (State is PendingState or ConfirmedState && (actor.IsOwnerOf(this) || actor.CanActAsReception))
+        || (State is PaidState && actor.CanActAsReception);
+
+    public bool CanCheckIn(ActorContext actor) => State is PaidState && actor.CanActAsReception;
+
+    public bool CanCheckOut(ActorContext actor) => State is CheckedInState && actor.CanActAsReception;
+
+    /// <summary>Przejście do nowego stanu: wpis w historii i powiadomienie obserwatorów.</summary>
+    public void TransitionTo(IReservationState newState, string eventDescription, ActorContext actor)
     {
         State = newState ?? throw new ArgumentNullException(nameof(newState));
+        _history.Add(new StateChange(DateTime.Now, newState.Name, eventDescription, actor.Login));
         Notify(eventDescription);
     }
 
-    /// <summary>Melduje gościa (wywoływane przez stan Opłacona) i powiadamia obserwatorów.</summary>
-    public void MarkCheckedIn()
+    /// <summary>Ogłasza utworzenie rezerwacji (wpis w historii + powiadomienia).</summary>
+    public void AnnounceCreation(ActorContext actor)
     {
-        IsCheckedIn = true;
-        Notify("Gość zameldowany (check-in)");
+        _history.Add(new StateChange(DateTime.Now, State.Name, "Rezerwacja utworzona", actor.Login));
+        Notify("Rezerwacja utworzona — oczekuje na potwierdzenie recepcji");
+    }
+
+    /// <summary>Ustawia powód odrzucenia (wywoływane przez stan Oczekująca przy odrzuceniu).</summary>
+    public void SetRejectionReason(string reason) => RejectionReason = reason;
+
+    /// <summary>Nadaje numer rezerwacji — jednokrotnie, przy dodaniu do rejestru lub odczycie z pliku.</summary>
+    public void AssignNumber(string reservationNumber)
+    {
+        if (ReservationNumber.Length == 0 && !string.IsNullOrWhiteSpace(reservationNumber))
+        {
+            ReservationNumber = reservationNumber.Trim();
+        }
     }
 
     /// <summary>Przywraca stan po wczytaniu danych z pliku JSON — bez powiadomień.</summary>
-    public void RestoreState(IReservationState state, bool isCheckedIn)
-    {
+    public void RestoreState(IReservationState state) =>
         State = state ?? throw new ArgumentNullException(nameof(state));
-        IsCheckedIn = isCheckedIn;
+
+    /// <summary>Przywraca metadane po wczytaniu z pliku JSON — bez powiadomień.</summary>
+    public void RestoreMetadata(DateTime createdAt, string? rejectionReason, IEnumerable<StateChange>? history)
+    {
+        CreatedAt = createdAt;
+        RejectionReason = rejectionReason;
+        _history.Clear();
+        _history.AddRange(history ?? []);
     }
 
     // --- Observer (Subject) ---
@@ -148,5 +192,6 @@ public sealed class Reservation
             : Room.GetPrice() * Stay.Nights;
 
     public override string ToString() =>
-        $"Rezerwacja {ShortId} | {Guest.FullName} | {Room.GetDescription()} | {Stay} | {TotalPrice} | {State.Name}";
+        $"{(ReservationNumber.Length > 0 ? ReservationNumber : ShortId)} | {Guest.FullName} | " +
+        $"{Room.GetDescription()} | {Stay} | {TotalPrice} | {State.Name}";
 }

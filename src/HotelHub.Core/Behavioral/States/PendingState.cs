@@ -3,8 +3,9 @@ using HotelHub.Domain;
 namespace HotelHub.Behavioral.States;
 
 /// <summary>
-/// Wzorzec: State (ConcreteState). Rezerwacja oczekująca na potwierdzenie —
-/// można ją potwierdzić lub anulować.
+/// Wzorzec: State (ConcreteState). Rezerwacja oczekująca na decyzję recepcji —
+/// recepcja może ją potwierdzić lub odrzucić (z powodem); anulować może
+/// gość-właściciel lub recepcja.
 /// </summary>
 public sealed class PendingState : IReservationState
 {
@@ -12,18 +13,53 @@ public sealed class PendingState : IReservationState
     public bool BlocksRoom => true;
     public bool CountsTowardRevenue => false;
 
-    public void Confirm(Reservation reservation) =>
-        reservation.TransitionTo(new ConfirmedState(), "Rezerwacja potwierdzona");
+    public OperationResult Confirm(Reservation reservation, ActorContext actor)
+    {
+        if (!actor.CanActAsReception)
+        {
+            return OperationResult.Fail("Rezerwację może potwierdzić wyłącznie recepcja.");
+        }
 
-    public void Pay(Reservation reservation) =>
-        Console.WriteLine("Nie można opłacić rezerwacji, która nie została jeszcze potwierdzona.");
+        reservation.TransitionTo(new ConfirmedState(), "Rezerwacja potwierdzona przez recepcję", actor);
+        return OperationResult.Ok($"Rezerwacja {reservation.ReservationNumber} została potwierdzona.");
+    }
 
-    public void Cancel(Reservation reservation) =>
-        reservation.TransitionTo(new CancelledState(), "Rezerwacja anulowana");
+    public OperationResult Reject(Reservation reservation, ActorContext actor, string reason)
+    {
+        if (!actor.CanActAsReception)
+        {
+            return OperationResult.Fail("Rezerwację może odrzucić wyłącznie recepcja.");
+        }
 
-    public void CheckIn(Reservation reservation) =>
-        Console.WriteLine("Nie można zameldować gościa — rezerwacja nie została opłacona.");
+        reason = reason?.Trim() ?? string.Empty;
 
-    public void CheckOut(Reservation reservation) =>
-        Console.WriteLine("Nie można wymeldować gościa — rezerwacja nie została opłacona.");
+        if (reason.Length == 0)
+        {
+            return OperationResult.Fail("Podanie powodu odrzucenia jest obowiązkowe.");
+        }
+
+        reservation.SetRejectionReason(reason);
+        reservation.TransitionTo(new RejectedState(), $"Rezerwacja odrzucona: {reason}", actor);
+        return OperationResult.Ok($"Rezerwacja {reservation.ReservationNumber} została odrzucona.");
+    }
+
+    public OperationResult Pay(Reservation reservation, ActorContext actor) =>
+        OperationResult.Fail("Rezerwacja oczekuje na potwierdzenie recepcji — nie można jej jeszcze opłacić.");
+
+    public OperationResult Cancel(Reservation reservation, ActorContext actor)
+    {
+        if (!actor.CanActAsReception && !actor.IsOwnerOf(reservation))
+        {
+            return OperationResult.Fail("Możesz anulować wyłącznie własną rezerwację.");
+        }
+
+        reservation.TransitionTo(new CancelledState(), "Rezerwacja anulowana", actor);
+        return OperationResult.Ok($"Rezerwacja {reservation.ReservationNumber} została anulowana.");
+    }
+
+    public OperationResult CheckIn(Reservation reservation, ActorContext actor) =>
+        OperationResult.Fail("Nie można zameldować gościa — rezerwacja nie została opłacona.");
+
+    public OperationResult CheckOut(Reservation reservation, ActorContext actor) =>
+        OperationResult.Fail("Nie można wymeldować gościa — rezerwacja nie została opłacona.");
 }

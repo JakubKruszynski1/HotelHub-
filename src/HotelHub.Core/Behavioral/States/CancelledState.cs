@@ -12,18 +12,21 @@ public sealed class CancelledState : IReservationState
     public bool BlocksRoom => false;
     public bool CountsTowardRevenue => false;
 
-    public void Confirm(Reservation reservation) =>
-        Console.WriteLine("Nie można potwierdzić anulowanej rezerwacji.");
+    public OperationResult Confirm(Reservation reservation, ActorContext actor) =>
+        OperationResult.Fail("Nie można potwierdzić anulowanej rezerwacji.");
 
-    public void Pay(Reservation reservation) =>
-        Console.WriteLine("Nie można opłacić anulowanej rezerwacji.");
+    public OperationResult Reject(Reservation reservation, ActorContext actor, string reason) =>
+        OperationResult.Fail("Nie można odrzucić anulowanej rezerwacji.");
 
-    public void Cancel(Reservation reservation) =>
-        Console.WriteLine("Rezerwacja jest już anulowana.");
+    public OperationResult Pay(Reservation reservation, ActorContext actor) =>
+        OperationResult.Fail("Nie można opłacić anulowanej rezerwacji.");
 
-    public void CheckIn(Reservation reservation) =>
-        Console.WriteLine("Nie można zameldować gościa — rezerwacja została anulowana.");
+    public OperationResult Cancel(Reservation reservation, ActorContext actor) =>
+        OperationResult.Fail("Rezerwacja jest już anulowana.");
 
-    public void CheckOut(Reservation reservation) =>
-        Console.WriteLine("Nie można wymeldować gościa — rezerwacja została anulowana.");
+    public OperationResult CheckIn(Reservation reservation, ActorContext actor) =>
+        OperationResult.Fail("Nie można zameldować gościa — rezerwacja została anulowana.");
+
+    public OperationResult CheckOut(Reservation reservation, ActorContext actor) =>
+        OperationResult.Fail("Nie można wymeldować gościa — rezerwacja została anulowana.");
 }

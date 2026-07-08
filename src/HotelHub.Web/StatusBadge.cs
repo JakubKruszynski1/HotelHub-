@@ -4,9 +4,10 @@ using HotelHub.Domain;
 namespace HotelHub.Web;
 
 /// <summary>
-/// Mapowanie stanu rezerwacji (State) na kolorowy badge Bootstrapa:
+/// Jedna wspólna mapa kolorów badge stanów rezerwacji w całej aplikacji:
 /// Oczekująca — szary, Potwierdzona — niebieski, Opłacona — zielony,
-/// Zakończona — granatowy, Anulowana — czerwony.
+/// Zameldowana — turkus, Zakończona — granat, Anulowana — czerwony,
+/// Odrzucona — pomarańcz.
 /// </summary>
 public static class StatusBadge
 {
@@ -15,13 +16,12 @@ public static class StatusBadge
         PendingState => "badge bg-secondary",
         ConfirmedState => "badge bg-primary",
         PaidState => "badge bg-success",
+        CheckedInState => "badge bg-info text-dark",
         CompletedState => "badge bg-dark",
         CancelledState => "badge bg-danger",
+        RejectedState => "badge bg-warning text-dark",
         _ => "badge bg-light text-dark"
     };
 
-    public static string Label(Reservation reservation) =>
-        reservation.IsCheckedIn && reservation.State is PaidState
-            ? $"{reservation.State.Name} (zameldowany)"
-            : reservation.State.Name;
+    public static string Label(Reservation reservation) => reservation.State.Name;
 }

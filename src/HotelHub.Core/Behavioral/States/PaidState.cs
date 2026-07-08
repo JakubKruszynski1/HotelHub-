@@ -3,8 +3,9 @@ using HotelHub.Domain;
 namespace HotelHub.Behavioral.States;
 
 /// <summary>
-/// Wzorzec: State (ConcreteState). Rezerwacja opłacona — można zameldować gościa,
-/// a po zameldowaniu wymeldować (co kończy rezerwację). Anulowanie nie jest już możliwe.
+/// Wzorzec: State (ConcreteState). Rezerwacja opłacona — recepcja może
+/// zameldować gościa lub (na jego prośbę) anulować rezerwację;
+/// gość nie może już anulować samodzielnie.
 /// </summary>
 public sealed class PaidState : IReservationState
 {
@@ -12,34 +13,38 @@ public sealed class PaidState : IReservationState
     public bool BlocksRoom => true;
     public bool CountsTowardRevenue => true;
 
-    public void Confirm(Reservation reservation) =>
-        Console.WriteLine("Rezerwacja jest już potwierdzona i opłacona.");
+    public OperationResult Confirm(Reservation reservation, ActorContext actor) =>
+        OperationResult.Fail("Rezerwacja jest już potwierdzona i opłacona.");
 
-    public void Pay(Reservation reservation) =>
-        Console.WriteLine("Rezerwacja jest już opłacona.");
+    public OperationResult Reject(Reservation reservation, ActorContext actor, string reason) =>
+        OperationResult.Fail("Odrzucić można wyłącznie rezerwację oczekującą na potwierdzenie.");
 
-    public void Cancel(Reservation reservation) =>
-        Console.WriteLine("Nie można anulować opłaconej rezerwacji.");
+    public OperationResult Pay(Reservation reservation, ActorContext actor) =>
+        OperationResult.Fail("Rezerwacja jest już opłacona.");
 
-    public void CheckIn(Reservation reservation)
+    public OperationResult Cancel(Reservation reservation, ActorContext actor)
     {
-        if (reservation.IsCheckedIn)
+        if (!actor.CanActAsReception)
         {
-            Console.WriteLine("Gość jest już zameldowany.");
-            return;
+            return OperationResult.Fail(
+                "Opłaconą rezerwację może anulować wyłącznie recepcja — skontaktuj się z hotelem.");
         }
 
-        reservation.MarkCheckedIn();
+        reservation.TransitionTo(new CancelledState(), "Opłacona rezerwacja anulowana przez recepcję", actor);
+        return OperationResult.Ok($"Rezerwacja {reservation.ReservationNumber} została anulowana.");
     }
 
-    public void CheckOut(Reservation reservation)
+    public OperationResult CheckIn(Reservation reservation, ActorContext actor)
     {
-        if (!reservation.IsCheckedIn)
+        if (!actor.CanActAsReception)
         {
-            Console.WriteLine("Nie można wymeldować gościa, który nie został zameldowany.");
-            return;
+            return OperationResult.Fail("Zameldowania gościa dokonuje wyłącznie recepcja.");
         }
 
-        reservation.TransitionTo(new CompletedState(), "Pobyt zakończony (check-out)");
+        reservation.TransitionTo(new CheckedInState(), "Gość zameldowany (check-in)", actor);
+        return OperationResult.Ok($"Gość zameldowany — rezerwacja {reservation.ReservationNumber}.");
     }
+
+    public OperationResult CheckOut(Reservation reservation, ActorContext actor) =>
+        OperationResult.Fail("Nie można wymeldować gościa, który nie został zameldowany.");
 }

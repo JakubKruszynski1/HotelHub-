@@ -1,3 +1,4 @@
+using System.Globalization;
 using HotelHub.Domain;
 using HotelHub.Structural.Composite;
 
@@ -21,6 +22,7 @@ public sealed class HotelRegistry
     private readonly List<Guest> _guests = [];
     private readonly List<Reservation> _reservations = [];
     private readonly List<UserAccount> _accounts = [];
+    private int _reservationCounter;
 
     private HotelRegistry()
     {
@@ -88,7 +90,32 @@ public sealed class HotelRegistry
                 throw new InvalidOperationException($"Rezerwacja {reservation.Id} już istnieje w rejestrze.");
             }
 
+            if (reservation.ReservationNumber.Length == 0)
+            {
+                reservation.AssignNumber(NextReservationNumber());
+            }
+
             _reservations.Add(reservation);
+        }
+    }
+
+    /// <summary>Nadaje kolejny numer rezerwacji (atomowy licznik), np. RES-2026-0001.</summary>
+    public string NextReservationNumber()
+    {
+        lock (_syncRoot)
+        {
+            _reservationCounter++;
+            return string.Format(CultureInfo.InvariantCulture, "RES-{0}-{1:0000}",
+                DateTime.Today.Year, _reservationCounter);
+        }
+    }
+
+    /// <summary>Synchronizuje licznik numerów z najwyższym numerem wczytanym z pliku JSON.</summary>
+    public void SyncReservationCounter(int lastUsedNumber)
+    {
+        lock (_syncRoot)
+        {
+            _reservationCounter = Math.Max(_reservationCounter, lastUsedNumber);
         }
     }
 

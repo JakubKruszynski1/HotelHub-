@@ -281,7 +281,7 @@ else
         {
             _created = Facade.MakeReservation(guest, room, stay,
                 string.IsNullOrWhiteSpace(_promoCode) ? null : _promoCode,
-                _extras, autoConfirm: false);
+                _extras);
         }
         catch (InvalidOperationException exception)
         {

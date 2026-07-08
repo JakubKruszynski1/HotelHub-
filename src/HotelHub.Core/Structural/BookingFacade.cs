@@ -251,7 +251,7 @@ public sealed class BookingFacade
     /// </summary>
     public Reservation MakeReservation(
         Guest guest, Room room, DateRange stay, string? promoCode = null,
-        IEnumerable<RoomExtra>? extras = null, bool autoConfirm = true)
+        IEnumerable<RoomExtra>? extras = null, ActorContext? actor = null)
     {
         ArgumentNullException.ThrowIfNull(guest);
         ArgumentNullException.ThrowIfNull(room);
@@ -276,12 +276,7 @@ public sealed class BookingFacade
 
             _registry.AddReservation(reservation);
             AttachObservers(reservation);
-
-            if (autoConfirm)
-            {
-                reservation.Confirm();
-            }
-
+            reservation.AnnounceCreation(actor ?? ActorContext.System);
             return reservation;
         }
     }
@@ -327,72 +322,82 @@ public sealed class BookingFacade
 
     /// <summary>
     /// Opłaca rezerwację: pobiera płatność (symulacja) i przechodzi do stanu Opłacona.
-    /// Nielegalną operację odrzuca wzorzec State z komunikatem.
+    /// Operację niedozwoloną (stan/rola/właściciel) odrzuca wzorzec State z komunikatem.
     /// </summary>
-    public bool PayReservation(Reservation reservation)
+    public OperationResult PayReservation(Reservation reservation, ActorContext? actor = null)
     {
         ArgumentNullException.ThrowIfNull(reservation);
 
         lock (SyncRoot)
         {
-            if (reservation.State is not ConfirmedState)
+            var context = actor ?? ActorContext.System;
+
+            if (!reservation.CanPay(context))
             {
-                reservation.Pay();
-                return false;
+                return reservation.Pay(context);
             }
 
             if (!_payment.ProcessPayment(reservation))
             {
-                Console.WriteLine("Płatność została odrzucona.");
-                return false;
+                return OperationResult.Fail("Płatność została odrzucona.");
             }
 
-            reservation.Pay();
-            return true;
+            return reservation.Pay(context);
         }
     }
 
-    /// <summary>Potwierdza rezerwację (możliwe tylko ze stanu Oczekująca).</summary>
-    public void ConfirmReservation(Reservation reservation)
+    /// <summary>Potwierdza rezerwację (tylko recepcja, ze stanu Oczekująca).</summary>
+    public OperationResult ConfirmReservation(Reservation reservation, ActorContext? actor = null)
     {
         ArgumentNullException.ThrowIfNull(reservation);
 
         lock (SyncRoot)
         {
-            reservation.Confirm();
+            return reservation.Confirm(actor ?? ActorContext.System);
         }
     }
 
-    /// <summary>Anuluje rezerwację (możliwe tylko ze stanów Oczekująca/Potwierdzona).</summary>
-    public void CancelReservation(Reservation reservation)
+    /// <summary>Odrzuca rezerwację z obowiązkowym powodem (tylko recepcja, ze stanu Oczekująca).</summary>
+    public OperationResult RejectReservation(Reservation reservation, string reason, ActorContext? actor = null)
     {
         ArgumentNullException.ThrowIfNull(reservation);
 
         lock (SyncRoot)
         {
-            reservation.Cancel();
+            return reservation.Reject(reason, actor ?? ActorContext.System);
         }
     }
 
-    /// <summary>Melduje gościa (wymaga opłaconej rezerwacji).</summary>
-    public void CheckIn(Reservation reservation)
+    /// <summary>Anuluje rezerwację (gość-właściciel w Oczekująca/Potwierdzona; recepcja także w Opłacona).</summary>
+    public OperationResult CancelReservation(Reservation reservation, ActorContext? actor = null)
     {
         ArgumentNullException.ThrowIfNull(reservation);
 
         lock (SyncRoot)
         {
-            reservation.CheckIn();
+            return reservation.Cancel(actor ?? ActorContext.System);
         }
     }
 
-    /// <summary>Wymeldowuje gościa i kończy rezerwację.</summary>
-    public void CheckOut(Reservation reservation)
+    /// <summary>Melduje gościa (tylko recepcja, wymaga opłaconej rezerwacji).</summary>
+    public OperationResult CheckIn(Reservation reservation, ActorContext? actor = null)
     {
         ArgumentNullException.ThrowIfNull(reservation);
 
         lock (SyncRoot)
         {
-            reservation.CheckOut();
+            return reservation.CheckIn(actor ?? ActorContext.System);
+        }
+    }
+
+    /// <summary>Wymeldowuje gościa i kończy rezerwację (tylko recepcja).</summary>
+    public OperationResult CheckOut(Reservation reservation, ActorContext? actor = null)
+    {
+        ArgumentNullException.ThrowIfNull(reservation);
+
+        lock (SyncRoot)
+        {
+            return reservation.CheckOut(actor ?? ActorContext.System);
         }
     }
 

@@ -58,6 +58,9 @@ public sealed class PersistenceService
                         .Select(extra => extra.ToString())
                         .ToList(),
                     Status = StateToCode(reservation.State),
+                    ReservationNumber = reservation.ReservationNumber,
+                    RejectionReason = reservation.RejectionReason,
+                    CreatedAt = reservation.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
                     IsCheckedIn = reservation.IsCheckedIn,
                     Pricing = reservation.Pricing is null
                         ? null
@@ -111,6 +114,7 @@ public sealed class PersistenceService
 
         _registry.ReplaceAll(rooms, guests, reservations);
         _registry.SetHotelStructure(HotelBranch.BuildHotel(snapshot.HotelName ?? "HotelHub", rooms));
+        RestoreReservationNumbering(reservations);
 
         Console.WriteLine(
             $"Wczytano dane: pokoje: {rooms.Count}, goście: {guests.Count}, rezerwacje: {reservations.Count}.");
@@ -221,7 +225,21 @@ public sealed class PersistenceService
                     state = new PendingState();
                 }
 
-                reservation.RestoreState(state, dto.IsCheckedIn);
+                // Zgodność ze starszym formatem pliku: Opłacona + flaga zameldowania = Zameldowana.
+                if (state is PaidState && dto.IsCheckedIn)
+                {
+                    state = new CheckedInState();
+                }
+
+                reservation.RestoreState(state);
+                reservation.AssignNumber(dto.ReservationNumber ?? string.Empty);
+
+                var createdAt = DateTime.TryParseExact(dto.CreatedAt, "yyyy-MM-dd HH:mm:ss",
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedCreation)
+                        ? parsedCreation
+                        : DateTime.Now;
+
+                reservation.RestoreMetadata(createdAt, dto.RejectionReason, history: null);
                 reservations.Add(reservation);
             }
             catch (ArgumentException exception)
@@ -231,6 +249,28 @@ public sealed class PersistenceService
         }
 
         return reservations;
+    }
+
+    /// <summary>
+    /// Synchronizuje licznik numerów rezerwacji z najwyższym wczytanym numerem
+    /// i nadaje numery rezerwacjom z plików w starszym formacie.
+    /// </summary>
+    private void RestoreReservationNumbering(List<Reservation> reservations)
+    {
+        var highest = reservations
+            .Select(r => r.ReservationNumber.Split('-'))
+            .Where(parts => parts.Length == 3 && int.TryParse(parts[2], NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out _))
+            .Select(parts => int.Parse(parts[2], CultureInfo.InvariantCulture))
+            .DefaultIfEmpty(0)
+            .Max();
+
+        _registry.SyncReservationCounter(highest);
+
+        foreach (var reservation in reservations.Where(r => r.ReservationNumber.Length == 0))
+        {
+            reservation.AssignNumber(_registry.NextReservationNumber());
+        }
     }
 
     /// <summary>Mapuje strategię cenową na kod zapisywany w JSON (np. PromoPricing → "Promo").</summary>
@@ -257,8 +297,10 @@ public sealed class PersistenceService
         "Pending" => new PendingState(),
         "Confirmed" => new ConfirmedState(),
         "Paid" => new PaidState(),
+        "CheckedIn" => new CheckedInState(),
         "Completed" => new CompletedState(),
         "Cancelled" => new CancelledState(),
+        "Rejected" => new RejectedState(),
         _ => null
     };
 
@@ -293,6 +335,9 @@ public sealed class PersistenceService
         public string? To { get; set; }
         public List<string>? Extras { get; set; }
         public string? Status { get; set; }
+        public string? ReservationNumber { get; set; }
+        public string? RejectionReason { get; set; }
+        public string? CreatedAt { get; set; }
         public bool IsCheckedIn { get; set; }
         public string? Pricing { get; set; }
     }
