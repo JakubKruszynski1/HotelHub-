@@ -15,7 +15,7 @@ namespace HotelHub.Structural;
 /// <see cref="ReservationBuilder"/> → <see cref="PaymentService"/> → powiadomienia (Observer).
 /// UI korzysta wyłącznie z fasady, nigdy z podsystemów bezpośrednio.
 /// </summary>
-public sealed class BookingFacade
+public sealed class BookingFacade : IBookingFacade
 {
     /// <summary>
     /// Blokada operacji mutujących — UI webowe (Blazor Server) może wywoływać
@@ -24,7 +24,20 @@ public sealed class BookingFacade
     /// </summary>
     private static readonly object SyncRoot = new();
 
+    private readonly ICurrentUserContext _userContext;
     private readonly HotelRegistry _registry = HotelRegistry.Instance;
+
+    public BookingFacade()
+        : this(FixedCurrentUser.SystemContext)
+    {
+    }
+
+    public BookingFacade(ICurrentUserContext userContext)
+    {
+        _userContext = userContext ?? throw new ArgumentNullException(nameof(userContext));
+    }
+
+    private ActorContext Actor => _userContext.Actor;
     private readonly AccountService _accountService = new();
     private readonly AvailabilityService _availability = new();
     private readonly PaymentService _payment = new();
@@ -206,6 +219,18 @@ public sealed class BookingFacade
     public Reservation? FindReservationByShortId(string shortId) =>
         _registry.FindReservationByShortId(shortId);
 
+    public Room? FindRoomByNumber(int number) => _registry.FindRoomByNumber(number);
+
+    public Reservation? FindReservationByNumber(string reservationNumber) =>
+        _registry.FindReservationByNumber(reservationNumber);
+
+    /// <summary>Rezerwacje wskazanego gościa, od najnowszych.</summary>
+    public IReadOnlyList<Reservation> GetReservationsForGuest(Guid guestId) =>
+        _registry.Reservations
+            .Where(r => r.Guest.Id == guestId)
+            .OrderByDescending(r => r.CreatedAt)
+            .ToList();
+
     /// <summary>Rejestruje nowego gościa w systemie.</summary>
     public Guest RegisterGuest(string firstName, string lastName, string email)
     {
@@ -295,7 +320,7 @@ public sealed class BookingFacade
     }
 
     /// <summary>Dodaje usługę dodatkową (Decorator) do rezerwacji i przelicza cenę.</summary>
-    public bool AddExtraToReservation(Reservation reservation, RoomExtra extra)
+    public OperationResult AddExtraToReservation(Reservation reservation, RoomExtra extra, ActorContext? actor = null)
     {
         ArgumentNullException.ThrowIfNull(reservation);
 
@@ -303,19 +328,18 @@ public sealed class BookingFacade
         {
             if (!reservation.CanModifyExtras)
             {
-                Console.WriteLine($"Nie można dodać usług do rezerwacji w stanie: {reservation.State.Name}.");
-                return false;
+                return OperationResult.Fail(
+                    $"Nie można dodać usług do rezerwacji w stanie: {reservation.State.Name}.");
             }
 
             try
             {
                 reservation.AddExtra(extra);
-                return true;
+                return OperationResult.Ok($"Dodano usługę. Nowa cena rezerwacji: {reservation.TotalPrice}.");
             }
             catch (InvalidOperationException exception)
             {
-                Console.WriteLine(exception.Message);
-                return false;
+                return OperationResult.Fail(exception.Message);
             }
         }
     }
@@ -439,4 +463,61 @@ public sealed class BookingFacade
             reservation.Attach(observer);
         }
     }
+
+    // --- Jawna implementacja IBookingFacade — kontekst wykonującego z ICurrentUserContext ---
+
+    BookingResult IBookingFacade.MakeReservation(
+        Room room, DateRange stay, string? promoCode, IEnumerable<RoomExtra>? extras)
+    {
+        if (Actor.GuestId is not { } guestId || _registry.FindGuestById(guestId) is not { } guest)
+        {
+            return BookingResult.Fail("Rezerwację może utworzyć wyłącznie zalogowany gość.");
+        }
+
+        try
+        {
+            return BookingResult.Ok(MakeReservation(guest, room, stay, promoCode, extras, Actor));
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BookingResult.Fail(exception.Message);
+        }
+    }
+
+    OperationResult IBookingFacade.AddExtraToReservation(Reservation reservation, RoomExtra extra) =>
+        AddExtraToReservation(reservation, extra, Actor);
+
+    OperationResult IBookingFacade.ConfirmReservation(Reservation reservation) =>
+        ConfirmReservation(reservation, Actor);
+
+    OperationResult IBookingFacade.RejectReservation(Reservation reservation, string reason) =>
+        RejectReservation(reservation, reason, Actor);
+
+    OperationResult IBookingFacade.PayReservation(Reservation reservation) =>
+        PayReservation(reservation, Actor);
+
+    OperationResult IBookingFacade.CancelReservation(Reservation reservation) =>
+        CancelReservation(reservation, Actor);
+
+    OperationResult IBookingFacade.CheckIn(Reservation reservation) => CheckIn(reservation, Actor);
+
+    OperationResult IBookingFacade.CheckOut(Reservation reservation) => CheckOut(reservation, Actor);
+
+    OperationResult IBookingFacade.SaveData()
+    {
+        try
+        {
+            SaveData();
+            return OperationResult.Ok("Dane zostały zapisane do pliku JSON.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return OperationResult.Fail($"Nie udało się zapisać danych: {exception.Message}");
+        }
+    }
+
+    OperationResult IBookingFacade.LoadData() =>
+        LoadData()
+            ? OperationResult.Ok("Dane zostały wczytane z pliku JSON.")
+            : OperationResult.Fail("Nie udało się wczytać danych — brak pliku lub plik jest uszkodzony.");
 }

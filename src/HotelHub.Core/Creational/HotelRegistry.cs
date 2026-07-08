@@ -173,6 +173,15 @@ public sealed class HotelRegistry
         }
     }
 
+    public Reservation? FindReservationByNumber(string reservationNumber)
+    {
+        lock (_syncRoot)
+        {
+            return _reservations.FirstOrDefault(r => string.Equals(
+                r.ReservationNumber, reservationNumber?.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
     public Reservation? FindReservationByShortId(string shortId)
     {
         lock (_syncRoot)

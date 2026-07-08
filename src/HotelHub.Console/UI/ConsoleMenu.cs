@@ -200,9 +200,15 @@ public sealed class ConsoleMenu
             _ => RoomExtra.Spa
         };
 
-        if (_facade.AddExtraToReservation(reservation, extra))
+        var result = _facade.AddExtraToReservation(reservation, extra);
+
+        if (result.Success)
         {
-            ConsoleRenderer.Success($"Dodano usługę. Nowa cena rezerwacji: {reservation.TotalPrice}.");
+            ConsoleRenderer.Success(result.Message);
+        }
+        else
+        {
+            ConsoleRenderer.Info(result.Message);
         }
     }
 
