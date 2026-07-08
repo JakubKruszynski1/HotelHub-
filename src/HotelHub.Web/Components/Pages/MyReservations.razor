@@ -1,0 +1,185 @@
+@page "/my-reservations"
+@attribute [Authorize(Roles = "Guest")]
+@inject IBookingFacade Facade
+@inject CurrentUserContext UserContext
+@inject ToastService Toasts
+@inject IJSRuntime JS
+
+<PageTitle>Moje rezerwacje — HotelHub</PageTitle>
+
+<h1>Moje rezerwacje</h1>
+
+@if (_reservations.Count == 0)
+{
+    <div class="empty-state">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+        <div class="empty-title">Nie masz jeszcze żadnych rezerwacji</div>
+        Wybierz pokój z katalogu i zarezerwuj swój pierwszy pobyt.
+        <div style="margin-top:1rem"><a class="btn btn-gold" href="/rooms">Przeglądaj pokoje</a></div>
+    </div>
+}
+else
+{
+    <div class="stack">
+        @foreach (var reservation in _reservations)
+        {
+            <div class="card">
+                <div class="row" style="align-items:flex-start">
+                    <img src="@reservation.BaseRoom.ImagePath" alt="@reservation.BaseRoom.TypeName"
+                         style="width:150px;border-radius:8px;flex:none" />
+                    <div style="flex:1;min-width:240px">
+                        <div class="row-between">
+                            <h3 style="margin:0">@reservation.ReservationNumber</h3>
+                            <span class="@StatusBadge.CssClass(reservation)">@StatusBadge.Label(reservation)</span>
+                        </div>
+                        <div class="muted">@reservation.Room.GetDescription()</div>
+                        <div>@Fmt.Range(reservation.Stay) (@Fmt.Nights(reservation.Stay.Nights))</div>
+                        <div class="price" style="font-size:1.15rem">@Fmt.Money(reservation.TotalPrice)</div>
+
+                        @if (reservation.State is HotelHub.Behavioral.States.RejectedState)
+                        {
+                            <div class="alert alert-warn" style="margin-bottom:0">
+                                <strong>Powód odrzucenia:</strong> @reservation.RejectionReason
+                            </div>
+                        }
+
+                        <details class="expander" style="margin-top:.75rem">
+                            <summary>Historia rezerwacji</summary>
+                            <ul class="timeline">
+                                @foreach (var change in reservation.History)
+                                {
+                                    <li>
+                                        @change.Description
+                                        <div class="time">@Fmt.DateTimeText(change.At)</div>
+                                    </li>
+                                }
+                            </ul>
+                        </details>
+                    </div>
+                    <div class="stack" style="flex:none">
+                        @if (reservation.CanPay(Actor))
+                        {
+                            <button class="btn btn-success" @onclick="() => _payTarget = reservation">Opłać</button>
+                        }
+                        @if (reservation.CanCancel(Actor))
+                        {
+                            <button class="btn btn-outline-danger" @onclick="() => _cancelTarget = reservation">Anuluj</button>
+                        }
+                        @if (HasInvoice(reservation))
+                        {
+                            <button class="btn btn-outline" @onclick="() => ShowInvoice(reservation)">
+                                Pobierz potwierdzenie
+                            </button>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (_payTarget is not null)
+{
+    <div class="modal-overlay" @onclick="() => _payTarget = null">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h3>Płatność za rezerwację @_payTarget.ReservationNumber</h3>
+            <p>
+                Symulacja płatności online — kwota do zapłaty:
+                <strong>@Fmt.Money(_payTarget.TotalPrice)</strong>
+            </p>
+            <div class="field">
+                <label for="payCard">Numer karty (symulacja)</label>
+                <input id="payCard" placeholder="4111 1111 1111 1111" />
+            </div>
+            <div class="modal-actions">
+                <button class="btn" @onclick="() => _payTarget = null">Anuluj</button>
+                <button class="btn btn-success" @onclick="Pay">Zapłać @Fmt.Money(_payTarget.TotalPrice)</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_cancelTarget is not null)
+{
+    <div class="modal-overlay" @onclick="() => _cancelTarget = null">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h3>Anulować rezerwację @_cancelTarget.ReservationNumber?</h3>
+            <p class="muted">Tej operacji nie można cofnąć.</p>
+            <div class="modal-actions">
+                <button class="btn" @onclick="() => _cancelTarget = null">Wróć</button>
+                <button class="btn btn-danger" @onclick="Cancel">Anuluj rezerwację</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_invoiceTarget is not null)
+{
+    <div class="modal-overlay" @onclick="() => _invoiceTarget = null">
+        <div class="modal" style="max-width:560px" @onclick:stopPropagation="true">
+            <h3>Potwierdzenie rezerwacji</h3>
+            <pre style="background:#f7f5ef;border-radius:8px;padding:1rem;overflow-x:auto;font-size:.82rem">@_invoiceText</pre>
+            <div class="modal-actions">
+                <button class="btn" @onclick="() => _invoiceTarget = null">Zamknij</button>
+                <button class="btn btn-primary" @onclick="Print">Drukuj / zapisz PDF</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<Reservation> _reservations = [];
+    private Reservation? _payTarget;
+    private Reservation? _cancelTarget;
+    private Reservation? _invoiceTarget;
+    private string _invoiceText = string.Empty;
+
+    private ActorContext Actor => UserContext.Actor;
+
+    protected override void OnInitialized() => Refresh();
+
+    private void Refresh() =>
+        _reservations = Actor.GuestId is { } guestId
+            ? Facade.GetReservationsForGuest(guestId)
+            : [];
+
+    private static bool HasInvoice(Reservation reservation) =>
+        reservation.State is HotelHub.Behavioral.States.PaidState
+            or HotelHub.Behavioral.States.CheckedInState
+            or HotelHub.Behavioral.States.CompletedState;
+
+    private void Pay()
+    {
+        if (_payTarget is null)
+        {
+            return;
+        }
+
+        Toasts.FromResult(Facade.PayReservation(_payTarget));
+        _payTarget = null;
+        Refresh();
+    }
+
+    private void Cancel()
+    {
+        if (_cancelTarget is null)
+        {
+            return;
+        }
+
+        Toasts.FromResult(Facade.CancelReservation(_cancelTarget));
+        _cancelTarget = null;
+        Refresh();
+    }
+
+    private void ShowInvoice(Reservation reservation)
+    {
+        _invoiceText = Facade.GetInvoice(reservation);
+        _invoiceTarget = reservation;
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("window.print");
+}

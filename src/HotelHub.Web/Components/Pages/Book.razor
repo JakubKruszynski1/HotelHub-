@@ -1,0 +1,333 @@
+@page "/book/{Number:int}"
+@attribute [Authorize(Roles = "Guest")]
+@inject IBookingFacade Facade
+@inject ToastService Toasts
+
+<PageTitle>Rezerwacja pokoju @Number — HotelHub</PageTitle>
+
+@if (_room is null)
+{
+    <div class="empty-state">
+        <div class="empty-title">Nie znaleziono pokoju</div>
+        <p>Pokój o numerze @Number nie jest dostępny w naszej ofercie.</p>
+        <a class="btn btn-primary" href="/rooms">Wróć do katalogu</a>
+    </div>
+}
+else if (_created is not null)
+{
+    <div class="auth-wrap" style="padding-top:2rem">
+        <div class="auth-card" style="max-width:560px">
+            <div class="card text-center">
+                <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#16a34a"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:.5rem">
+                    <circle cx="12" cy="12" r="10" /><polyline points="8 12.5 11 15.5 16 9.5" />
+                </svg>
+                <h1>Dziękujemy za rezerwację!</h1>
+                <p>
+                    Twoja rezerwacja otrzymała numer<br />
+                    <strong style="font-size:1.4rem" class="serif">@_created.ReservationNumber</strong>
+                </p>
+                <div class="alert alert-info">
+                    Rezerwacja oczekuje na potwierdzenie recepcji. O każdej zmianie
+                    poinformujemy Cię powiadomieniem (dzwoneczek w górnym pasku).
+                </div>
+                <div class="row" style="justify-content:center">
+                    <a class="btn btn-primary" href="/my-reservations">Moje rezerwacje</a>
+                    <a class="btn btn-outline" href="/">Strona główna</a>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <h1>Rezerwacja — pokój @_room.Number · @_room.TypeName</h1>
+    <p class="muted">@Fmt.Money(_room.BasePricePerNight) / noc · do @_room.Capacity os.</p>
+
+    <div class="steps">
+        @foreach (var (number, title) in StepTitles)
+        {
+            <span class="step @(number == _step ? "current" : number < _step ? "done" : "")">
+                @number. @title
+            </span>
+        }
+    </div>
+
+    <div class="grid grid-2">
+        <div class="card">
+            @if (_step == 1)
+            {
+                <h3>Termin pobytu</h3>
+                <div class="row">
+                    <div class="field" style="margin:0">
+                        <label for="bFrom">Zameldowanie</label>
+                        <input id="bFrom" type="date" @bind="From" @bind:after="ValidateDates" />
+                    </div>
+                    <div class="field" style="margin:0">
+                        <label for="bTo">Wymeldowanie</label>
+                        <input id="bTo" type="date" @bind="To" @bind:after="ValidateDates" />
+                    </div>
+                </div>
+
+                @if (_dateError is not null)
+                {
+                    <div class="alert alert-error">@_dateError</div>
+                }
+                else if (_stay is not null)
+                {
+                    <div class="alert alert-success">
+                        Termin dostępny: @Fmt.Range(_stay) (@Fmt.Nights(_stay.Nights)).
+                    </div>
+                }
+
+                <button class="btn btn-primary" disabled="@(_stay is null)" @onclick="() => _step = 2">Dalej</button>
+            }
+            else if (_step == 2)
+            {
+                <h3>Usługi dodatkowe</h3>
+                <p class="small muted">Cena po prawej stronie przelicza się na żywo.</p>
+
+                <label class="checkbox-row">
+                    <input type="checkbox" checked="@_extras.Contains(RoomExtra.Breakfast)"
+                           @onchange="e => ToggleExtra(RoomExtra.Breakfast, e)" />
+                    Śniadanie do pokoju (+@Fmt.Money(BreakfastDecorator.PricePerNight) / noc)
+                </label>
+                <label class="checkbox-row">
+                    <input type="checkbox" checked="@_extras.Contains(RoomExtra.Parking)"
+                           @onchange="e => ToggleExtra(RoomExtra.Parking, e)" />
+                    Miejsce parkingowe (+@Fmt.Money(ParkingDecorator.PricePerNight) / noc)
+                </label>
+                <label class="checkbox-row">
+                    <input type="checkbox" checked="@_extras.Contains(RoomExtra.Spa)"
+                           @onchange="e => ToggleExtra(RoomExtra.Spa, e)" />
+                    Pakiet SPA (+@Fmt.Money(SpaDecorator.PricePerNight) / noc)
+                </label>
+
+                <div class="row" style="margin-top:1rem">
+                    <button class="btn" @onclick="() => _step = 1">Wstecz</button>
+                    <button class="btn btn-primary" @onclick="() => _step = 3">Dalej</button>
+                </div>
+            }
+            else if (_step == 3)
+            {
+                <h3>Kod promocyjny</h3>
+                <div class="field">
+                    <label for="bPromo">Masz kod rabatowy? Wpisz go tutaj</label>
+                    <input id="bPromo" @bind="_promoCode" @bind:event="oninput" placeholder="np. PROMO20" />
+                    @if (PromoApplied)
+                    {
+                        <div class="field-hint" style="color:#16a34a">
+                            Kod zastosowany — cena obniżona:
+                            <span class="strike">@Fmt.Money(BaseQuote!.TotalPrice)</span>
+                            <strong>@Fmt.Money(CurrentQuote!.TotalPrice)</strong>
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_promoCode))
+                    {
+                        <div class="field-error">Nieznany kod promocyjny.</div>
+                    }
+                </div>
+
+                <div class="row">
+                    <button class="btn" @onclick="() => _step = 2">Wstecz</button>
+                    <button class="btn btn-primary" @onclick="() => _step = 4">Dalej</button>
+                </div>
+            }
+            else
+            {
+                <h3>Podsumowanie</h3>
+                <table class="summary-table">
+                    <tbody>
+                        <tr>
+                            <th>Pokój</th>
+                            <td>@_room.Number · @_room.TypeName</td>
+                        </tr>
+                        <tr>
+                            <th>Termin</th>
+                            <td>@Fmt.Range(_stay!) (@Fmt.Nights(_stay!.Nights))</td>
+                        </tr>
+                        <tr>
+                            <th>Cena za noc (z usługami)</th>
+                            <td>@Fmt.Money(CurrentQuote!.PricePerNight)</td>
+                        </tr>
+                        <tr>
+                            <th>Usługi dodatkowe</th>
+                            <td>@(_extras.Count == 0 ? "brak" : string.Join(", ", _extras.Select(ExtraName)))</td>
+                        </tr>
+                        <tr>
+                            <th>Taryfa</th>
+                            <td>@CurrentQuote!.TariffName</td>
+                        </tr>
+                        @if (PromoApplied)
+                        {
+                            <tr>
+                                <th>Rabat PROMO20</th>
+                                <td>−@Fmt.Money(BaseQuote!.TotalPrice.Amount - CurrentQuote!.TotalPrice.Amount)</td>
+                            </tr>
+                        }
+                        <tr class="total">
+                            <th>Do zapłaty</th>
+                            <td>@Fmt.Money(CurrentQuote!.TotalPrice)</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                @if (_createError is not null)
+                {
+                    <div class="alert alert-error">@_createError</div>
+                }
+
+                <div class="row" style="margin-top:1rem">
+                    <button class="btn" @onclick="() => _step = 3">Wstecz</button>
+                    <button class="btn btn-gold btn-lg" @onclick="CreateReservation">Rezerwuję</button>
+                </div>
+            }
+        </div>
+
+        <div>
+            <div class="card">
+                <img src="@_room.ImagePath" alt="@_room.TypeName" style="width:100%;border-radius:8px" />
+                <h3 style="margin-top:.75rem">Twoja wycena</h3>
+                @if (CurrentQuote is { } quote && _stay is not null)
+                {
+                    <table class="summary-table">
+                        <tbody>
+                            <tr>
+                                <th>@Fmt.Money(quote.PricePerNight) × @Fmt.Nights(_stay.Nights)</th>
+                                <td>@quote.TariffName</td>
+                            </tr>
+                            <tr class="total">
+                                <th>Razem</th>
+                                <td>
+                                    @if (PromoApplied)
+                                    {
+                                        <span class="strike">@Fmt.Money(BaseQuote!.TotalPrice)</span>
+                                    }
+                                    @Fmt.Money(quote.TotalPrice)
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <p class="muted small">Wybierz termin pobytu, aby zobaczyć wycenę.</p>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly (int Number, string Title)[] StepTitles =
+    [
+        (1, "Termin"), (2, "Usługi"), (3, "Kod rabatowy"), (4, "Podsumowanie")
+    ];
+
+    [Parameter]
+    public int Number { get; set; }
+
+    private Room? _room;
+    private int _step = 1;
+    private DateTime From { get; set; } = DateTime.Today.AddDays(1);
+    private DateTime To { get; set; } = DateTime.Today.AddDays(3);
+    private DateRange? _stay;
+    private string? _dateError;
+    private readonly HashSet<RoomExtra> _extras = [];
+    private string _promoCode = string.Empty;
+    private string? _createError;
+    private Reservation? _created;
+
+    protected override void OnParametersSet()
+    {
+        var room = Facade.FindRoomByNumber(Number);
+        _room = room is { IsOutOfService: false } ? room : null;
+        ValidateDates();
+    }
+
+    /// <summary>Walidacja terminu NA ŻYWO: poprawność zakresu i konflikt z innymi rezerwacjami.</summary>
+    private void ValidateDates()
+    {
+        _stay = null;
+        _dateError = null;
+
+        if (_room is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var stay = new DateRange(From, To);
+
+            if (Facade.GetAvailableRooms(stay).All(r => r.Number != _room.Number))
+            {
+                _dateError = "Pokój jest zajęty w wybranym terminie — zmień daty pobytu.";
+                return;
+            }
+
+            _stay = stay;
+        }
+        catch (ArgumentException exception)
+        {
+            _dateError = exception.Message;
+        }
+    }
+
+    private void ToggleExtra(RoomExtra extra, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+        {
+            _extras.Add(extra);
+        }
+        else
+        {
+            _extras.Remove(extra);
+        }
+    }
+
+    private ReservationQuote? BaseQuote =>
+        _room is null || _stay is null ? null : Facade.CalculateQuote(_room, _stay, _extras);
+
+    private ReservationQuote? CurrentQuote =>
+        _room is null || _stay is null
+            ? null
+            : Facade.CalculateQuote(_room, _stay, _extras,
+                string.IsNullOrWhiteSpace(_promoCode) ? null : _promoCode);
+
+    private bool PromoApplied =>
+        !string.IsNullOrWhiteSpace(_promoCode) &&
+        BaseQuote is { } baseQuote && CurrentQuote is { } current &&
+        current.TariffName != baseQuote.TariffName;
+
+    private static string ExtraName(RoomExtra extra) => extra switch
+    {
+        RoomExtra.Breakfast => "śniadanie",
+        RoomExtra.Parking => "parking",
+        _ => "SPA"
+    };
+
+    private void CreateReservation()
+    {
+        _createError = null;
+
+        if (_room is null || _stay is null)
+        {
+            return;
+        }
+
+        var result = Facade.MakeReservation(_room, _stay,
+            PromoApplied ? _promoCode : null, _extras);
+
+        if (result.Success)
+        {
+            _created = result.Reservation;
+            Toasts.Success(result.Message);
+        }
+        else
+        {
+            _createError = result.Message;
+            Toasts.Error(result.Message);
+        }
+    }
+}

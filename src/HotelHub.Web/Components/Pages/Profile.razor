@@ -1,0 +1,129 @@
+@page "/profile"
+@attribute [Authorize(Roles = "Guest")]
+@inject IBookingFacade Facade
+@inject CurrentUserContext UserContext
+@inject ToastService Toasts
+
+<PageTitle>Mój profil — HotelHub</PageTitle>
+
+<h1>Mój profil</h1>
+
+<div class="grid grid-2">
+    <div class="card">
+        <h3>Dane osobowe</h3>
+
+        <div class="field">
+            <label for="pFirst">Imię</label>
+            <input id="pFirst" @bind="_firstName" maxlength="50" />
+        </div>
+        <div class="field">
+            <label for="pLast">Nazwisko</label>
+            <input id="pLast" @bind="_lastName" maxlength="50" />
+        </div>
+        <div class="field">
+            <label for="pEmail">E-mail</label>
+            <input id="pEmail" type="email" @bind="_email" />
+        </div>
+
+        @if (_profileError is not null)
+        {
+            <div class="alert alert-error">@_profileError</div>
+        }
+
+        <button class="btn btn-primary" @onclick="SaveProfile">Zapisz zmiany</button>
+        <p class="small muted" style="margin-top:.75rem">
+            Zmiana imienia i nazwiska w górnym pasku będzie widoczna po ponownym zalogowaniu.
+        </p>
+    </div>
+
+    <div class="card">
+        <h3>Zmiana hasła</h3>
+
+        <div class="field">
+            <label for="pOld">Dotychczasowe hasło</label>
+            <input id="pOld" type="password" @bind="_currentPassword" autocomplete="current-password" />
+        </div>
+        <div class="field">
+            <label for="pNew">Nowe hasło</label>
+            <input id="pNew" type="password" @bind="_newPassword" autocomplete="new-password" />
+            <div class="field-hint">Co najmniej 8 znaków.</div>
+        </div>
+        <div class="field">
+            <label for="pNew2">Powtórz nowe hasło</label>
+            <input id="pNew2" type="password" @bind="_newPassword2" autocomplete="new-password" />
+        </div>
+
+        @if (_passwordError is not null)
+        {
+            <div class="alert alert-error">@_passwordError</div>
+        }
+
+        <button class="btn btn-primary" @onclick="ChangePassword">Zmień hasło</button>
+    </div>
+</div>
+
+@code {
+    private string _firstName = string.Empty;
+    private string _lastName = string.Empty;
+    private string _email = string.Empty;
+    private string? _profileError;
+
+    private string _currentPassword = string.Empty;
+    private string _newPassword = string.Empty;
+    private string _newPassword2 = string.Empty;
+    private string? _passwordError;
+
+    protected override void OnInitialized()
+    {
+        if (UserContext.Actor.GuestId is { } guestId && Facade.FindGuestById(guestId) is { } guest)
+        {
+            _firstName = guest.FirstName;
+            _lastName = guest.LastName;
+            _email = guest.Email;
+        }
+    }
+
+    private void SaveProfile()
+    {
+        _profileError = null;
+
+        if (UserContext.Actor.GuestId is not { } guestId)
+        {
+            return;
+        }
+
+        var result = Facade.UpdateGuestProfile(guestId, _firstName, _lastName, _email);
+
+        if (result.Success)
+        {
+            Toasts.Success(result.Message);
+        }
+        else
+        {
+            _profileError = result.Message;
+        }
+    }
+
+    private void ChangePassword()
+    {
+        _passwordError = null;
+
+        if (_newPassword != _newPassword2)
+        {
+            _passwordError = "Nowe hasła nie są identyczne.";
+            return;
+        }
+
+        var result = Facade.ChangePassword(UserContext.Actor.Login, _currentPassword, _newPassword);
+
+        if (result.Success)
+        {
+            Toasts.Success(result.Message);
+            _currentPassword = _newPassword = _newPassword2 = string.Empty;
+        }
+        else
+        {
+            _passwordError = result.Message;
+        }
+    }
+}

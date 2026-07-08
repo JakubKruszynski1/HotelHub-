@@ -1,4 +1,5 @@
 using HotelHub.Structural;
+using HotelHub.Web;
 using HotelHub.Web.Auth;
 using HotelHub.Web.Components;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -25,6 +26,7 @@ builder.Services.AddHttpContextAccessor();
 
 // Kontekst zalogowanego użytkownika (scoped) dla komponentów i proxy fasady.
 builder.Services.AddScoped<CurrentUserContext>();
+builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<ICurrentUserContext>(sp => sp.GetRequiredService<CurrentUserContext>());
 
 // UI otrzymuje WYŁĄCZNIE IBookingFacade — proxy autoryzujące (Proxy),
