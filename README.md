@@ -1,115 +1,111 @@
-# HotelHub — System Rezerwacji Hotelowej
+# HotelHub — dwustronny system rezerwacji hotelowej
 
-Projekt zaliczeniowy z przedmiotu „Wzorce projektowe i architektura aplikacji".
-System rezerwacji hotelowych (C# 12 / .NET 8) implementujący 9 wzorców projektowych —
-po 3 z każdej grupy (kreacyjne, strukturalne, behawioralne) — z **dwoma niezależnymi
-interfejsami użytkownika** (konsolowym i webowym Blazor Server) korzystającymi
-z tej samej logiki domenowej wyłącznie przez fasadę (`BookingFacade`).
+Projekt zaliczeniowy z przedmiotu „Wzorce projektowe i architektura aplikacji"
+(studia magisterskie). Realistyczny system rezerwacji hotelowej (C# 12 / .NET 8,
+Blazor Server) z **portalem gościa** i **panelem recepcji**, uwierzytelnianiem
+cookie z rolami oraz **10 wzorcami projektowymi** — w tym Proxy autoryzującym
+dostęp do fasady.
 
-Projekt korzysta wyłącznie ze standardowej biblioteki .NET (zero paczek NuGet
-w projektach produkcyjnych; xUnit tylko w projekcie testowym; Blazor Server
-jest częścią SDK .NET 8).
-
-## Architektura
-
-```
-HotelHub.Core     ← cała logika: Domain, wzorce, Services (class library)
-     ▲       ▲
-     │       │            oba UI wołają WYŁĄCZNIE BookingFacade (Facade)
-HotelHub.Console   HotelHub.Web (Blazor Server)
-```
-
-- **HotelHub.Core** — encje z walidacją, 9 wzorców projektowych i serwisy
-  (dostępność, płatności, faktury, persystencja JSON),
-- **HotelHub.Console** — interaktywne menu tekstowe (`Program.cs` + `UI/`),
-- **HotelHub.Web** — aplikacja Blazor Server (interaktywny tryb Server, bez WebAssembly);
-  stan współdzielony przez Singleton `HotelRegistry`, operacje mutujące pod `lock`.
+Zero paczek NuGet w projektach produkcyjnych — wyłącznie standardowa biblioteka
+.NET i shared framework ASP.NET Core (`PasswordHasher<T>`, cookie auth);
+xUnit tylko w projekcie testowym. Zero zasobów z internetu/CDN — własny CSS,
+ikony inline SVG i lokalnie wygenerowane grafiki pokoi.
 
 ## Uruchomienie
 
-Wymagany [.NET SDK 8.0](https://dotnet.microsoft.com/download/dotnet/8.0).
-
-Aplikacja **konsolowa**:
-
-```bash
-dotnet run --project src/HotelHub.Console
-```
-
-Aplikacja **webowa** (stały port, bez HTTPS):
+Wymagany [.NET SDK 8.0](https://dotnet.microsoft.com/download/dotnet/8.0). Jedna komenda:
 
 ```bash
 dotnet run --project src/HotelHub.Web
 ```
 
-a następnie otwórz **http://localhost:5000** w przeglądarce.
+Aplikacja wstaje pod adresem **http://localhost:5000** z pełnym seedem:
+12 pokoi na 3 piętrach (jeden w remoncie), 3 konta i 5 rezerwacji w różnych
+stanach — każdy ekran ma treść od pierwszego uruchomienia.
 
-Oba interfejsy startują z zeseedowanymi danymi (hotel „Pod Różą": 2 piętra,
-8 pokoi mieszanych typów, 2 gości).
-
-Testy jednostkowe (wskazują na `HotelHub.Core`):
+Testy (97 testów xUnit):
 
 ```bash
 dotnet test
 ```
 
-## Strony aplikacji webowej
+## Konta demonstracyjne
 
-| Adres | Funkcja |
-|---|---|
-| `/` | dashboard: rozwijane drzewo hotelu (Composite) + rezerwacje wg stanów i łączny przychód |
-| `/rooms` | tabela pokoi z filtrem dostępności w zakresie dat |
-| `/guests` | lista gości + formularz rejestracji z walidacją |
-| `/reservations/new` | kreator rezerwacji krok po kroku (Builder): gość → termin → pokój → usługi (Decorator, wycena na żywo) → podsumowanie (Strategy, kod `PROMO20`) |
-| `/reservations` | tabela rezerwacji: stan jako kolorowy badge, akcje widoczne tylko gdy stan na nie pozwala (State) |
-| `/events` | panel powiadomień (Observer): wpisy [E-MAIL]/[RECEPCJA]/[AUDYT] z obserwatora `WebNotifier` |
-| `/data` | zapis/odczyt stanu do pliku JSON |
+| Login | Hasło | Rola |
+|---|---|---|
+| `admin` | `admin123` | Recepcja — panel `/admin` |
+| `jan.kowalski` | `Gosc1234!` | Gość |
+| `anna.nowak` | `Gosc1234!` | Gość |
 
-Aplikacja konsolowa oferuje ten sam pełny przepływ w menu tekstowym
-(struktura hotelu, dostępność, rejestracja gościa, kreator, usługi, płatność,
-anulowanie, check-in/out, raport przychodów, zapis/odczyt JSON).
+Dane logowania są też wyświetlane w ramce „Konta demonstracyjne" na ekranie
+logowania (projekt edukacyjny). Rejestracja samodzielna tworzy wyłącznie konta
+gości; konta recepcji pochodzą tylko z seeda.
 
-## Zaimplementowane wzorce projektowe
+## Role i światy UI
+
+**Portal gościa** (kremowo-granatowy z złotem): strona główna z wyszukiwarką,
+katalog pokoi `/rooms` z filtrami dat/typu/osób, szczegóły pokoju z cennikiem
+taryf i kalendarzem zajętości, kreator rezerwacji `/book/{nr}` (walidacja
+konfliktu terminów na żywo, usługi z przeliczaniem ceny, kod `PROMO20`
+z przekreśleniem starej ceny), `/my-reservations` z akcjami zależnymi od stanu,
+profil, dzwoneczek powiadomień.
+
+**Panel recepcji** (`/admin`, ciemny sidebar): pulpit dnia (kolejka akceptacji,
+przyjazdy/wyjazdy dziś, obłożenie), rezerwacje z filtrami i historią operacji,
+goście, zarządzanie pokojami (dodawanie, edycja, wyłączanie z użytku z powodem),
+raporty przychodów po drzewie hotelu, dziennik zdarzeń z wykonawcami,
+kopia zapasowa JSON.
+
+Cykl życia rezerwacji: **Oczekująca** → (recepcja potwierdza / odrzuca z powodem)
+→ **Potwierdzona** → (gość-właściciel opłaca) → **Opłacona** → (recepcja melduje)
+→ **Zameldowana** → (recepcja wymeldowuje) → **Zakończona**. Anulowanie:
+gość-właściciel w Oczekującej/Potwierdzonej, recepcja także w Opłaconej.
+
+## 10 wzorców projektowych
 
 ### Kreacyjne
 
-| Wzorzec | Klasy | Rola w aplikacji |
+| Wzorzec | Klasy | Rola |
 |---|---|---|
-| Singleton | `Creational/HotelRegistry` | jedyny, bezpieczny wątkowo (`Lazy<T>`) rejestr pokoi, gości i rezerwacji — wspólny stan także dla całej aplikacji webowej |
+| Singleton | `Creational/HotelRegistry` | thread-safe (`Lazy<T>`) rejestr pokoi, gości, kont i rezerwacji z atomowym licznikiem numerów `RES-RRRR-NNNN` |
 | Factory Method | `Creational/RoomFactory` + `Domain/RoomTypes/*` | tworzenie pokoi bez znajomości klas konkretnych |
-| Builder | `Creational/ReservationBuilder` | budowa rezerwacji płynnym API `.ForGuest().WithRoom().Between().WithPricing().Build()` z walidacją kompletności |
+| Builder | `Creational/ReservationBuilder` | budowa rezerwacji płynnym API z walidacją kompletności |
 
 ### Strukturalne
 
-| Wzorzec | Klasy | Rola w aplikacji |
+| Wzorzec | Klasy | Rola |
 |---|---|---|
-| Decorator | `Structural/Decorators/*` | łańcuchowe doliczanie usług dodatkowych; w kreatorze webowym cena przelicza się na żywo przy zaznaczaniu |
-| Composite | `Structural/Composite/*` (`Room` = liść) | drzewo hotel → piętra → pokoje; rekurencyjny raport przychodów (konsola i dashboard) |
-| Facade | `Structural/BookingFacade` | jedyny punkt wejścia obu UI; orkiestracja dostępności, budowy rezerwacji, płatności i powiadomień |
+| Decorator | `Structural/Decorators/*` | usługi dodatkowe doliczane do pokoju; cena w kreatorze przelicza się na żywo |
+| Composite | `Structural/Composite/*` (`Room` = liść) | drzewo hotel → piętra → pokoje; raport przychodów per gałąź |
+| Facade | `Structural/BookingFacade` | orkiestracja podsystemów; jedyna droga UI do logiki |
+| **Proxy** | `Structural/AuthorizedBookingFacade` (+ `IBookingFacade`) | **Protection Proxy**: kontroluje dostęp do fasady na podstawie roli i własności zasobu; UI otrzymuje wyłącznie `IBookingFacade` |
 
 ### Behawioralne
 
-| Wzorzec | Klasy | Rola w aplikacji |
+| Wzorzec | Klasy | Rola |
 |---|---|---|
-| State | `Behavioral/States/*` | cykl życia rezerwacji; w web steruje widocznością przycisków akcji, nielegalne operacje odrzucane komunikatem (bez wyjątków) |
-| Observer | `Behavioral/Observers/*` + `HotelHub.Web/WebNotifier` | powiadomienia [E-MAIL] i [RECEPCJA] w konsoli, wpisy w `audit.log` oraz panel `/events` w web |
-| Strategy | `Behavioral/Pricing/*` | wymienne polityki cenowe dobierane automatycznie z dat, nadpisywane kodem `PROMO20` |
+| State | `Behavioral/States/*` | cykl życia rezerwacji z autoryzacją ról w przejściach; nielegalna operacja = komunikat, nie wyjątek |
+| Observer | `Behavioral/Observers/*` | powiadomienia per użytkownik (`NotificationCenter` + dzwoneczek), `audit.log` z loginem wykonawcy |
+| Strategy | `Behavioral/Pricing/*` | taryfy: standard / wysoki sezon ×1,5 / weekend ×1,2 / `PROMO20` ×0,8 — dobierane automatycznie z dat |
 
-Każda klasa uczestnicząca we wzorcu ma komentarz XML `/// <summary>`
-ze wskazaniem wzorca i pełnionej roli.
+Każda klasa uczestnicząca we wzorcu ma komentarz XML ze wskazaniem wzorca i roli.
+W widocznym UI nie występują nazwy wzorców — wyłącznie język domeny hotelowej.
 
-## Walidacja i odporność na błędy
+## Bezpieczeństwo i odporność
 
-- liczby wyłącznie przez `int.TryParse`/`decimal.TryParse`, daty przez
-  `DateTime.TryParseExact` (`yyyy-MM-dd`, `CultureInfo.InvariantCulture`),
-- `DateRange`: koniec po początku, zakaz dat z przeszłości, maks. 30 dni pobytu,
-- `Money`: wyłącznie `decimal`, zakaz wartości ujemnych,
-- kolizje terminów wykrywane przez `AvailabilityService` (przedziały półotwarte),
-- konsola: globalny `try-catch` w pętli menu; web: akcje niedozwolone w danym
-  stanie nie mają przycisków, a wywołane mimo to kończą się komunikatem,
-- deserializacja JSON odporna na uszkodzony/zmodyfikowany plik
-  (`JsonException` + walidacja i pomijanie nieprawidłowych wpisów),
-- zapis wyłącznie do stałych plików w katalogu aplikacji
-  (`hotelhub-data.json`, `audit.log`) — nazwy plików nigdy od użytkownika.
+- hasła wyłącznie hashowane (`PasswordHasher<UserAccount>`), nigdzie plain text,
+- cookie auth przez klasyczne endpointy HTTP (poza obwodem Blazor), role w claimach,
+- autoryzacja twarda: trasy `/admin/*` niedostępne dla gościa (strona „Brak dostępu"),
+  a Proxy odmawia operacji nawet przy bezpośrednim wywołaniu (np. opłacenie cudzej
+  rezerwacji, płatność przez recepcję),
+- walidacje domenowe: daty (`yyyy-MM-dd`, InvariantCulture, zakaz przeszłości,
+  maks. 30 dni), kwoty `decimal` bez ujemnych, overlap-check dostępności,
+  login 3–30 znaków, hasło min. 8,
+- persystencja JSON obejmuje pokoje, gości, **konta (z hashami)**, rezerwacje
+  z historią i powiadomienia; plik walidowany przy odczycie, wpisy nieprawidłowe
+  pomijane; stałe nazwy plików (`hotelhub-data.json`, `audit.log`) w katalogu aplikacji,
+- `HotelRegistry` i operacje mutujące fasady pod `lock` (współbieżność Blazor Server),
+- formaty UI: kwoty `1 575,00 zł`, daty `dd.MM.yyyy`; storage w InvariantCulture.
 
 ## Struktura projektu
 
@@ -117,20 +113,24 @@ ze wskazaniem wzorca i pełnionej roli.
 HotelHub/
 ├── HotelHub.sln
 ├── src/
-│   ├── HotelHub.Core/          # logika współdzielona (class library)
-│   │   ├── Domain/             # encje i value objecty z walidacją
-│   │   ├── Creational/         # Singleton, Factory Method, Builder
-│   │   ├── Structural/         # Decorator, Composite, Facade
-│   │   ├── Behavioral/         # State, Observer, Strategy
-│   │   └── Services/           # dostępność, płatności, faktury, persystencja JSON
-│   ├── HotelHub.Console/       # UI konsolowe (menu, InputReader, renderer)
-│   └── HotelHub.Web/           # UI webowe Blazor Server (Components/, wwwroot/)
-├── tests/HotelHub.Tests/       # testy xUnit (referencja do Core)
-└── docs/                       # diagramy i zrzuty ekranu
+│   ├── HotelHub.Core/           # domena, 10 wzorców, serwisy (class library)
+│   │   ├── Domain/              # encje, value objecty, konta, wyniki operacji
+│   │   ├── Creational/          # Singleton, Factory Method, Builder
+│   │   ├── Structural/          # Decorator, Composite, Facade, Proxy
+│   │   ├── Behavioral/          # State, Observer (+NotificationCenter), Strategy
+│   │   └── Services/            # dostępność, płatności, faktury, konta, persystencja
+│   └── HotelHub.Web/            # Blazor Server: portal gościa + panel recepcji
+│       ├── Auth/                # endpointy logowania, claimy, kontekst użytkownika
+│       ├── Components/          # layouty ról, strony, komponenty współdzielone
+│       └── wwwroot/             # design system CSS, grafiki pokoi SVG
+└── tests/HotelHub.Tests/        # 97 testów xUnit
 ```
 
 ## Testy
 
-37 testów xUnit: przejścia stanów rezerwacji (w tym odrzucanie nielegalnych),
-wyliczenia wszystkich strategii cenowych na konkretnych datach, sumowanie cen
-i opisów łańcucha dekoratorów oraz walidacja i nakładanie się zakresów dat.
+- macierz autoryzacji przejść stanów (operacja × rola × właściciel),
+- Proxy: odmowy dostępu i poprawna delegacja,
+- hashowanie/weryfikacja/zmiana hasła, rejestracja kont (unikalność loginu, walidacje),
+- NotificationCenter: adresowanie per gość, licznik nieprzeczytanych,
+- blokada wyłączenia pokoju z aktywnymi rezerwacjami, numeracja rezerwacji,
+- strategie cenowe, dekoratory, zakresy dat (testy z wcześniejszych etapów).
