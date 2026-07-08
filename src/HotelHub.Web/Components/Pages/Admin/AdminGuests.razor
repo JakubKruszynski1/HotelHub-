@@ -1,0 +1,164 @@
+@page "/admin/guests"
+@layout HotelHub.Web.Components.Layout.AdminLayout
+@attribute [Authorize(Roles = "Reception")]
+@inject IBookingFacade Facade
+@inject ToastService Toasts
+
+<PageTitle>Goście — HotelHub</PageTitle>
+
+<h2>Goście</h2>
+
+<div class="card" style="margin-top:1rem">
+    <div class="field" style="max-width:340px;margin-bottom:0">
+        <label for="gSearch">Szukaj gościa</label>
+        <input id="gSearch" @bind="_search" @bind:event="oninput" placeholder="imię, nazwisko lub e-mail" />
+    </div>
+</div>
+
+<div class="card" style="margin-top:1.25rem">
+    @if (Filtered.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-title">Nie znaleziono gości</div>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th></th><th>Imię i nazwisko</th><th>E-mail</th><th>Rezerwacje</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var guest in Filtered)
+                {
+                    <tr>
+                        <td><span class="avatar" style="background:var(--admin-accent);color:#fff">@guest.Initials</span></td>
+                        <td><strong>@guest.FullName</strong></td>
+                        <td>@guest.Email</td>
+                        <td>@Facade.GetReservationsForGuest(guest.Id).Count</td>
+                        <td>
+                            <button class="btn btn-sm" @onclick="() => Toggle(guest.Id)">
+                                @(_expandedId == guest.Id ? "Zwiń" : "Podgląd")
+                            </button>
+                        </td>
+                    </tr>
+                    @if (_expandedId == guest.Id)
+                    {
+                        <tr class="detail-row">
+                            <td></td>
+                            <td colspan="4">
+                                <div class="grid grid-2">
+                                    <div>
+                                        <strong>Edycja danych</strong>
+                                        <div class="field">
+                                            <label for="eFirst">Imię</label>
+                                            <input id="eFirst" @bind="_editFirst" maxlength="50" />
+                                        </div>
+                                        <div class="field">
+                                            <label for="eLast">Nazwisko</label>
+                                            <input id="eLast" @bind="_editLast" maxlength="50" />
+                                        </div>
+                                        <div class="field">
+                                            <label for="eEmail">E-mail</label>
+                                            <input id="eEmail" @bind="_editEmail" />
+                                        </div>
+                                        @if (_editError is not null)
+                                        {
+                                            <div class="field-error">@_editError</div>
+                                        }
+                                        <button class="btn btn-accent btn-sm" @onclick="() => Save(guest)">Zapisz</button>
+                                    </div>
+                                    <div>
+                                        <strong>Rezerwacje gościa</strong>
+                                        @if (Facade.GetReservationsForGuest(guest.Id).Count == 0)
+                                        {
+                                            <p class="muted small">Brak rezerwacji.</p>
+                                        }
+                                        else
+                                        {
+                                            <table class="data-table">
+                                                <tbody>
+                                                    @foreach (var reservation in Facade.GetReservationsForGuest(guest.Id))
+                                                    {
+                                                        <tr>
+                                                            <td>@reservation.ReservationNumber</td>
+                                                            <td>Pokój @reservation.BaseRoom.Number</td>
+                                                            <td class="nowrap">@Fmt.Range(reservation.Stay)</td>
+                                                            <td><span class="@StatusBadge.CssClass(reservation)">@StatusBadge.Label(reservation)</span></td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        }
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private string _search = string.Empty;
+    private Guid? _expandedId;
+    private string _editFirst = string.Empty;
+    private string _editLast = string.Empty;
+    private string _editEmail = string.Empty;
+    private string? _editError;
+
+    private IReadOnlyList<Guest> Filtered
+    {
+        get
+        {
+            var term = _search.Trim();
+
+            return Facade.Guests
+                .Where(g => term.Length == 0 ||
+                            g.FullName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                            g.Email.Contains(term, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(g => g.LastName)
+                .ToList();
+        }
+    }
+
+    private void Toggle(Guid guestId)
+    {
+        _editError = null;
+
+        if (_expandedId == guestId)
+        {
+            _expandedId = null;
+            return;
+        }
+
+        _expandedId = guestId;
+
+        if (Facade.FindGuestById(guestId) is { } guest)
+        {
+            _editFirst = guest.FirstName;
+            _editLast = guest.LastName;
+            _editEmail = guest.Email;
+        }
+    }
+
+    private void Save(Guest guest)
+    {
+        _editError = null;
+
+        var result = Facade.UpdateGuestProfile(guest.Id, _editFirst, _editLast, _editEmail);
+
+        if (result.Success)
+        {
+            Toasts.Success(result.Message);
+        }
+        else
+        {
+            _editError = result.Message;
+        }
+    }
+}

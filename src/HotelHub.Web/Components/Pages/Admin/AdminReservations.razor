@@ -1,0 +1,261 @@
+@page "/admin/reservations"
+@layout HotelHub.Web.Components.Layout.AdminLayout
+@attribute [Authorize(Roles = "Reception")]
+@inject IBookingFacade Facade
+@inject CurrentUserContext UserContext
+@inject ToastService Toasts
+
+<PageTitle>Rezerwacje — HotelHub</PageTitle>
+
+<h2>Rezerwacje</h2>
+
+<div class="card" style="margin-top:1rem">
+    <div class="row">
+        <div class="field" style="margin:0;min-width:220px">
+            <label for="rSearch">Szukaj (nazwisko / numer)</label>
+            <input id="rSearch" @bind="_search" @bind:event="oninput" placeholder="np. Kowalski lub RES-2026" />
+        </div>
+        <div class="field" style="margin:0">
+            <label for="rState">Stan</label>
+            <select id="rState" @bind="_stateFilter">
+                <option value="">wszystkie</option>
+                @foreach (var state in StateNames)
+                {
+                    <option value="@state">@state</option>
+                }
+            </select>
+        </div>
+        <div class="field" style="margin:0">
+            <label for="rFrom">Pobyt od</label>
+            <input id="rFrom" type="date" @bind="_filterFrom" />
+        </div>
+        <div class="field" style="margin:0">
+            <label for="rTo">Pobyt do</label>
+            <input id="rTo" type="date" @bind="_filterTo" />
+        </div>
+        <button class="btn btn-ghost" @onclick="ClearFilters">Wyczyść filtry</button>
+    </div>
+</div>
+
+<div class="card" style="margin-top:1.25rem">
+    @if (Filtered.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-title">Brak rezerwacji spełniających kryteria</div>
+            Zmień filtry lub wyczyść wyszukiwanie.
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th></th>
+                    <th>Numer</th>
+                    <th>Gość</th>
+                    <th>Pokój</th>
+                    <th>Termin</th>
+                    <th>Kwota</th>
+                    <th>Stan</th>
+                    <th>Utworzono</th>
+                    <th>Akcje</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var reservation in Filtered)
+                {
+                    <tr>
+                        <td>
+                            <button class="btn btn-ghost btn-sm" title="Szczegóły"
+                                    @onclick="() => ToggleExpand(reservation.Id)">
+                                @(_expanded.Contains(reservation.Id) ? "▾" : "▸")
+                            </button>
+                        </td>
+                        <td><strong>@reservation.ReservationNumber</strong></td>
+                        <td>@reservation.Guest.FullName</td>
+                        <td>@reservation.BaseRoom.Number</td>
+                        <td class="nowrap">@Fmt.Range(reservation.Stay)</td>
+                        <td class="price nowrap">@Fmt.Money(reservation.TotalPrice)</td>
+                        <td><span class="@StatusBadge.CssClass(reservation)">@StatusBadge.Label(reservation)</span></td>
+                        <td class="nowrap muted small">@Fmt.DateTimeText(reservation.CreatedAt)</td>
+                        <td class="actions">
+                            @if (reservation.CanConfirm(Actor))
+                            {
+                                <button class="btn btn-accent btn-sm" @onclick="() => Confirm(reservation)">Potwierdź</button>
+                            }
+                            @if (reservation.CanReject(Actor))
+                            {
+                                <button class="btn btn-warn btn-sm" @onclick="() => _rejectTarget = reservation">Odrzuć</button>
+                            }
+                            @if (reservation.CanCheckIn(Actor))
+                            {
+                                <button class="btn btn-teal btn-sm" @onclick="() => CheckIn(reservation)">Zamelduj</button>
+                            }
+                            @if (reservation.CanCheckOut(Actor))
+                            {
+                                <button class="btn btn-primary btn-sm" @onclick="() => CheckOut(reservation)">Wymelduj</button>
+                            }
+                            @if (reservation.CanCancel(Actor))
+                            {
+                                <button class="btn btn-outline-danger btn-sm" @onclick="() => _cancelTarget = reservation">Anuluj</button>
+                            }
+                        </td>
+                    </tr>
+                    @if (_expanded.Contains(reservation.Id))
+                    {
+                        <tr class="detail-row">
+                            <td></td>
+                            <td colspan="8">
+                                <div class="grid grid-2">
+                                    <div>
+                                        <strong>Szczegóły</strong><br />
+                                        Pokój: @reservation.Room.GetDescription()<br />
+                                        Usługi dodatkowe:
+                                        @(RoomExtraDecorator.GetExtras(reservation.Room).Count == 0
+                                            ? "brak"
+                                            : string.Join(", ", RoomExtraDecorator.GetExtras(reservation.Room)
+                                                .Select(ExtraName)))<br />
+                                        Taryfa: @(reservation.Pricing?.Name ?? "standardowa")<br />
+                                        @if (reservation.RejectionReason is not null)
+                                        {
+                                            <span><strong>Powód odrzucenia:</strong> @reservation.RejectionReason</span>
+                                        }
+                                    </div>
+                                    <div>
+                                        <strong>Historia stanów</strong>
+                                        <ul class="timeline">
+                                            @foreach (var change in reservation.History)
+                                            {
+                                                <li>
+                                                    @change.Description
+                                                    <div class="time">@Fmt.DateTimeText(change.At) · wykonawca: @change.ActorLogin</div>
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<RejectModal Reservation="_rejectTarget"
+             OnClose="() => _rejectTarget = null"
+             OnReject="Reject" />
+
+@if (_cancelTarget is not null)
+{
+    <div class="modal-overlay" @onclick="() => _cancelTarget = null">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h3>Anulować rezerwację @_cancelTarget.ReservationNumber?</h3>
+            <p class="muted">Gość: @_cancelTarget.Guest.FullName · @Fmt.Range(_cancelTarget.Stay)</p>
+            <div class="modal-actions">
+                <button class="btn" @onclick="() => _cancelTarget = null">Wróć</button>
+                <button class="btn btn-danger" @onclick="Cancel">Anuluj rezerwację</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly string[] StateNames =
+    [
+        "Oczekująca", "Potwierdzona", "Opłacona", "Zameldowana", "Zakończona", "Anulowana", "Odrzucona"
+    ];
+
+    private string _search = string.Empty;
+    private string _stateFilter = string.Empty;
+    private DateTime? _filterFrom;
+    private DateTime? _filterTo;
+    private readonly HashSet<Guid> _expanded = [];
+    private Reservation? _rejectTarget;
+    private Reservation? _cancelTarget;
+
+    private ActorContext Actor => UserContext.Actor;
+
+    private IReadOnlyList<Reservation> Filtered
+    {
+        get
+        {
+            var query = Facade.Reservations.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var term = _search.Trim();
+                query = query.Where(r =>
+                    r.Guest.FullName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    r.ReservationNumber.Contains(term, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (_stateFilter.Length > 0)
+            {
+                query = query.Where(r => r.State.Name == _stateFilter);
+            }
+
+            if (_filterFrom is { } from)
+            {
+                query = query.Where(r => r.Stay.To > from);
+            }
+
+            if (_filterTo is { } to)
+            {
+                query = query.Where(r => r.Stay.From <= to);
+            }
+
+            return query.OrderByDescending(r => r.CreatedAt).ToList();
+        }
+    }
+
+    private void ToggleExpand(Guid id)
+    {
+        if (!_expanded.Remove(id))
+        {
+            _expanded.Add(id);
+        }
+    }
+
+    private void ClearFilters()
+    {
+        _search = string.Empty;
+        _stateFilter = string.Empty;
+        _filterFrom = null;
+        _filterTo = null;
+    }
+
+    private static string ExtraName(RoomExtra extra) => extra switch
+    {
+        RoomExtra.Breakfast => "śniadanie",
+        RoomExtra.Parking => "parking",
+        _ => "SPA"
+    };
+
+    private void Confirm(Reservation reservation) => Toasts.FromResult(Facade.ConfirmReservation(reservation));
+
+    private void CheckIn(Reservation reservation) => Toasts.FromResult(Facade.CheckIn(reservation));
+
+    private void CheckOut(Reservation reservation) => Toasts.FromResult(Facade.CheckOut(reservation));
+
+    private void Cancel()
+    {
+        if (_cancelTarget is not null)
+        {
+            Toasts.FromResult(Facade.CancelReservation(_cancelTarget));
+        }
+
+        _cancelTarget = null;
+    }
+
+    private void Reject(string reason)
+    {
+        if (_rejectTarget is not null)
+        {
+            Toasts.FromResult(Facade.RejectReservation(_rejectTarget, reason));
+        }
+
+        _rejectTarget = null;
+    }
+}

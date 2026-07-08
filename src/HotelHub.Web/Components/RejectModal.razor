@@ -1,0 +1,60 @@
+@* Modal odrzucenia rezerwacji z obowiązkowym powodem (panel recepcji). *@
+
+@if (Reservation is not null)
+{
+    <div class="modal-overlay" @onclick="Close">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h3>Odrzuć rezerwację @Reservation.ReservationNumber</h3>
+            <p class="muted small">Gość: @Reservation.Guest.FullName · @Fmt.Range(Reservation.Stay)</p>
+
+            <div class="field">
+                <label for="rejectReason">Powód odrzucenia (obowiązkowy)</label>
+                <textarea id="rejectReason" rows="3" @bind="_reason" @bind:event="oninput"></textarea>
+                @if (_showError && string.IsNullOrWhiteSpace(_reason))
+                {
+                    <div class="field-error">Podanie powodu odrzucenia jest obowiązkowe.</div>
+                }
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn" @onclick="Close">Wróć</button>
+                <button class="btn btn-warn" @onclick="Confirm">Odrzuć rezerwację</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _reason = string.Empty;
+    private bool _showError;
+
+    [Parameter]
+    public Reservation? Reservation { get; set; }
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public EventCallback<string> OnReject { get; set; }
+
+    private async Task Close()
+    {
+        _reason = string.Empty;
+        _showError = false;
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task Confirm()
+    {
+        if (string.IsNullOrWhiteSpace(_reason))
+        {
+            _showError = true;
+            return;
+        }
+
+        var reason = _reason.Trim();
+        _reason = string.Empty;
+        _showError = false;
+        await OnReject.InvokeAsync(reason);
+    }
+}
