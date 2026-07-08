@@ -41,6 +41,27 @@ public sealed class DateRange : IEquatable<DateRange>
         To = to;
     }
 
+    private DateRange(DateTime from, DateTime to, bool restored)
+    {
+        _ = restored;
+        From = from.Date;
+        To = to.Date;
+    }
+
+    /// <summary>
+    /// Odtwarza zakres z zapisanych danych: waliduje wyłącznie kolejność dat —
+    /// pobyty historyczne (z przeszłości) muszą dać się wczytać z pliku JSON.
+    /// </summary>
+    public static DateRange Restore(DateTime from, DateTime to)
+    {
+        if (to.Date <= from.Date)
+        {
+            throw new ArgumentException("Data zakończenia pobytu musi być późniejsza niż data rozpoczęcia.");
+        }
+
+        return new DateRange(from, to, restored: true);
+    }
+
     /// <summary>Sprawdza, czy zakresy nakładają się (przedziały półotwarte — dzień wyjazdu nie koliduje z dniem przyjazdu).</summary>
     public bool Overlaps(DateRange other) => From < other.To && other.From < To;
 

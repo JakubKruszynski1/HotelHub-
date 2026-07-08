@@ -317,6 +317,18 @@ public sealed class BookingFacade : IBookingFacade
     public IReadOnlyCollection<DateTime> GetOccupiedDays(int roomNumber, int year, int month) =>
         _availability.GetOccupiedDays(roomNumber, year, month);
 
+    /// <summary>
+    /// Dziennik zdarzeń: chronologiczna lista operacji na rezerwacjach
+    /// (czas, wykonawca, operacja, rezerwacja) agregowana z ich historii.
+    /// </summary>
+    public IReadOnlyList<EventLogEntry> GetEventLog() =>
+        _registry.Reservations
+            .SelectMany(reservation => reservation.History.Select(change => new EventLogEntry(
+                change.At, change.ActorLogin, change.Description,
+                reservation.ReservationNumber, change.StateName)))
+            .OrderByDescending(entry => entry.At)
+            .ToList();
+
     // --- Powiadomienia (Observer → NotificationCenter) ---
 
     /// <summary>Powiadomienia wykonującego: gość — własne, recepcja — kanał recepcji.</summary>

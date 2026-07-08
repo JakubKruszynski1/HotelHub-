@@ -93,6 +93,9 @@ public sealed class AuthorizedBookingFacade : IBookingFacade
     public IReadOnlyCollection<DateTime> GetOccupiedDays(int roomNumber, int year, int month) =>
         _inner.GetOccupiedDays(roomNumber, year, month);
 
+    public IReadOnlyList<EventLogEntry> GetEventLog() =>
+        Actor.CanActAsReception ? _inner.GetEventLog() : [];
+
     public ReservationQuote CalculateQuote(
         Room room, DateRange stay, IEnumerable<RoomExtra>? extras = null, string? promoCode = null) =>
         _inner.CalculateQuote(room, stay, extras, promoCode);

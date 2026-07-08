@@ -1,0 +1,198 @@
+@page "/admin/rooms"
+@layout HotelHub.Web.Components.Layout.AdminLayout
+@attribute [Authorize(Roles = "Reception")]
+@inject IBookingFacade Facade
+@inject ToastService Toasts
+
+<PageTitle>Pokoje — HotelHub</PageTitle>
+
+<h2>Pokoje</h2>
+
+<div class="card" style="margin-top:1rem">
+    <h3 class="card-title">Dodaj pokój</h3>
+    <div class="row">
+        <div class="field" style="margin:0">
+            <label for="newType">Typ pokoju</label>
+            <select id="newType" @bind="_newType">
+                <option value="@RoomType.Standard">Standard</option>
+                <option value="@RoomType.Deluxe">Deluxe</option>
+                <option value="@RoomType.Apartment">Apartament</option>
+            </select>
+        </div>
+        <div class="field" style="margin:0;max-width:140px">
+            <label for="newNumber">Numer (piętro = setki)</label>
+            <input id="newNumber" type="number" @bind="_newNumber" min="1" />
+        </div>
+        <button class="btn btn-accent" @onclick="AddRoom">Dodaj pokój</button>
+    </div>
+</div>
+
+<div class="card" style="margin-top:1.25rem">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Nr</th><th>Typ</th><th>Piętro</th><th>Osoby</th><th>Cena/noc</th><th>Stan</th><th>Akcje</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var room in Facade.Rooms.OrderBy(r => r.Number))
+            {
+                <tr>
+                    <td><strong>@room.Number</strong></td>
+                    <td>@room.TypeName</td>
+                    <td>@room.Floor</td>
+                    <td>@room.Capacity</td>
+                    <td class="price">@Fmt.Money(room.BasePricePerNight)</td>
+                    <td>
+                        @if (room.IsOutOfService)
+                        {
+                            <span class="state-badge st-rejected" title="@room.OutOfServiceReason">Wyłączony z użytku</span>
+                        }
+                        else
+                        {
+                            <span class="state-badge st-paid">W użyciu</span>
+                        }
+                    </td>
+                    <td class="actions">
+                        <button class="btn btn-sm" @onclick="() => ToggleEdit(room)">
+                            @(_editNumber == room.Number ? "Zwiń" : "Edytuj")
+                        </button>
+                        @if (room.IsOutOfService)
+                        {
+                            <button class="btn btn-teal btn-sm" @onclick="() => ReturnToService(room)">Przywróć</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-warn btn-sm" @onclick="() => _outOfServiceTarget = room">Wyłącz z użytku</button>
+                        }
+                    </td>
+                </tr>
+                @if (room.IsOutOfService)
+                {
+                    <tr class="detail-row">
+                        <td></td>
+                        <td colspan="6"><strong>Powód wyłączenia:</strong> @room.OutOfServiceReason</td>
+                    </tr>
+                }
+                @if (_editNumber == room.Number)
+                {
+                    <tr class="detail-row">
+                        <td></td>
+                        <td colspan="6">
+                            <div class="grid grid-2">
+                                <div>
+                                    <div class="field">
+                                        <label for="ePrice">Cena bazowa za noc (zł)</label>
+                                        <input id="ePrice" type="number" step="10" min="1" @bind="_editPrice" />
+                                    </div>
+                                    <div class="field">
+                                        <label for="eCapacity">Pojemność (osoby)</label>
+                                        <input id="eCapacity" type="number" min="1" max="10" @bind="_editCapacity" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="field">
+                                        <label for="eDesc">Opis</label>
+                                        <textarea id="eDesc" rows="3" @bind="_editDescription"></textarea>
+                                    </div>
+                                    <div class="field">
+                                        <label for="eAmen">Udogodnienia (rozdzielone przecinkami)</label>
+                                        <textarea id="eAmen" rows="2" @bind="_editAmenities"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                            @if (_editError is not null)
+                            {
+                                <div class="field-error">@_editError</div>
+                            }
+                            <button class="btn btn-accent btn-sm" @onclick="() => SaveEdit(room)">Zapisz zmiany</button>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (_outOfServiceTarget is not null)
+{
+    <div class="modal-overlay" @onclick="() => _outOfServiceTarget = null">
+        <div class="modal" @onclick:stopPropagation="true">
+            <h3>Wyłącz pokój @_outOfServiceTarget.Number z użytku</h3>
+            <p class="muted small">Pokój zniknie z portalu gościa i z wyszukiwania dostępności.</p>
+            <div class="field">
+                <label for="oosReason">Powód (np. remont) — obowiązkowy</label>
+                <textarea id="oosReason" rows="2" @bind="_outOfServiceReason" @bind:event="oninput"></textarea>
+            </div>
+            <div class="modal-actions">
+                <button class="btn" @onclick="() => _outOfServiceTarget = null">Wróć</button>
+                <button class="btn btn-warn" @onclick="SetOutOfService">Wyłącz z użytku</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private RoomType _newType = RoomType.Standard;
+    private int _newNumber = 305;
+    private int? _editNumber;
+    private decimal _editPrice;
+    private int _editCapacity;
+    private string _editDescription = string.Empty;
+    private string _editAmenities = string.Empty;
+    private string? _editError;
+    private Room? _outOfServiceTarget;
+    private string _outOfServiceReason = string.Empty;
+
+    private void AddRoom() => Toasts.FromResult(Facade.AddRoom(_newType, _newNumber));
+
+    private void ToggleEdit(Room room)
+    {
+        _editError = null;
+
+        if (_editNumber == room.Number)
+        {
+            _editNumber = null;
+            return;
+        }
+
+        _editNumber = room.Number;
+        _editPrice = room.BasePricePerNight.Amount;
+        _editCapacity = room.Capacity;
+        _editDescription = room.Description;
+        _editAmenities = string.Join(", ", room.Amenities);
+    }
+
+    private void SaveEdit(Room room)
+    {
+        _editError = null;
+
+        var amenities = _editAmenities
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var result = Facade.UpdateRoom(room.Number, _editPrice, _editCapacity, _editDescription, amenities);
+
+        if (result.Success)
+        {
+            Toasts.Success(result.Message);
+            _editNumber = null;
+        }
+        else
+        {
+            _editError = result.Message;
+        }
+    }
+
+    private void SetOutOfService()
+    {
+        if (_outOfServiceTarget is not null)
+        {
+            Toasts.FromResult(Facade.SetRoomOutOfService(_outOfServiceTarget.Number, _outOfServiceReason));
+        }
+
+        _outOfServiceTarget = null;
+        _outOfServiceReason = string.Empty;
+    }
+
+    private void ReturnToService(Room room) => Toasts.FromResult(Facade.ReturnRoomToService(room.Number));
+}

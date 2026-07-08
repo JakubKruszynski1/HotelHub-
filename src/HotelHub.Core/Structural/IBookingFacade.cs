@@ -40,6 +40,9 @@ public interface IBookingFacade
     /// <summary>Dni zajęte pokoju we wskazanym miesiącu (kalendarz zajętości).</summary>
     IReadOnlyCollection<DateTime> GetOccupiedDays(int roomNumber, int year, int month);
 
+    /// <summary>Dziennik zdarzeń rezerwacyjnych (wyłącznie recepcja).</summary>
+    IReadOnlyList<EventLogEntry> GetEventLog();
+
     /// <summary>Wycena pobytu „na żywo" (Decorator + Strategy) bez tworzenia rezerwacji.</summary>
     ReservationQuote CalculateQuote(
         Room room, DateRange stay, IEnumerable<RoomExtra>? extras = null, string? promoCode = null);

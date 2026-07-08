@@ -1,0 +1,82 @@
+@page "/admin/events"
+@layout HotelHub.Web.Components.Layout.AdminLayout
+@attribute [Authorize(Roles = "Reception")]
+@inject IBookingFacade Facade
+
+<PageTitle>Dziennik zdarzeń — HotelHub</PageTitle>
+
+<h2>Dziennik zdarzeń</h2>
+<p class="muted small">
+    Operacje na rezerwacjach z czasem i wykonawcą — pełny zapis trafia także do pliku <code>audit.log</code>.
+</p>
+
+<div class="card">
+    <div class="row">
+        <div class="field" style="margin:0;min-width:240px">
+            <label for="evSearch">Szukaj (numer rezerwacji / wykonawca)</label>
+            <input id="evSearch" @bind="_search" @bind:event="oninput" placeholder="np. RES-2026-0002 lub admin" />
+        </div>
+        <div class="field" style="margin:0">
+            <label for="evType">Typ operacji</label>
+            <select id="evType" @bind="_typeFilter">
+                <option value="">wszystkie</option>
+                @foreach (var type in OperationTypes)
+                {
+                    <option value="@type">@type</option>
+                }
+            </select>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-top:1.25rem">
+    @if (Filtered.Count == 0)
+    {
+        <div class="empty-state">
+            <div class="empty-title">Brak zdarzeń spełniających kryteria</div>
+        </div>
+    }
+    else
+    {
+        <table class="data-table">
+            <thead>
+                <tr><th>Czas</th><th>Wykonawca</th><th>Operacja</th><th>Rezerwacja</th><th>Stan po operacji</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in Filtered)
+                {
+                    <tr>
+                        <td class="nowrap">@Fmt.DateTimeText(entry.At)</td>
+                        <td><strong>@entry.ActorLogin</strong></td>
+                        <td>@entry.Description</td>
+                        <td>@entry.ReservationNumber</td>
+                        <td class="nowrap">@entry.StateName</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private string _search = string.Empty;
+    private string _typeFilter = string.Empty;
+
+    private IReadOnlyList<string> OperationTypes =>
+        Facade.GetEventLog().Select(e => e.StateName).Distinct().OrderBy(s => s).ToList();
+
+    private IReadOnlyList<EventLogEntry> Filtered
+    {
+        get
+        {
+            var term = _search.Trim();
+
+            return Facade.GetEventLog()
+                .Where(e => term.Length == 0 ||
+                            e.ReservationNumber.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                            e.ActorLogin.Contains(term, StringComparison.OrdinalIgnoreCase))
+                .Where(e => _typeFilter.Length == 0 || e.StateName == _typeFilter)
+                .ToList();
+        }
+    }
+}

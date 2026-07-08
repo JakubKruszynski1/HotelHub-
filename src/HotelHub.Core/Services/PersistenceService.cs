@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using HotelHub.Behavioral.Observers;
 using HotelHub.Behavioral.Pricing;
 using HotelHub.Behavioral.States;
 using HotelHub.Creational;
@@ -10,13 +11,16 @@ using HotelHub.Structural.Decorators;
 namespace HotelHub.Services;
 
 /// <summary>
-/// Zapis i odczyt stanu aplikacji do pliku JSON (<see cref="System.Text.Json"/>).
+/// Zapis i odczyt pełnego stanu aplikacji do pliku JSON (<see cref="System.Text.Json"/>):
+/// pokoje (z parametrami i wyłączeniami), goście, konta użytkowników (z hashami haseł),
+/// rezerwacje (ze stanem, numerem i historią) oraz powiadomienia.
 /// Ścieżka pliku jest stała (katalog aplikacji) — nigdy nie pochodzi od użytkownika.
 /// Wczytane dane są walidowane przed użyciem (plik mógł zostać ręcznie zmodyfikowany).
 /// </summary>
 public sealed class PersistenceService
 {
     public const string DateFormat = "yyyy-MM-dd";
+    private const string TimestampFormat = "yyyy-MM-dd HH:mm:ss";
 
     private static readonly string DataFilePath =
         Path.Combine(AppContext.BaseDirectory, "hotelhub-data.json");
@@ -28,45 +32,71 @@ public sealed class PersistenceService
 
     private readonly HotelRegistry _registry = HotelRegistry.Instance;
 
-    /// <summary>Zapisuje pokoje, gości i rezerwacje do pliku JSON.</summary>
+    /// <summary>Zapisuje pełny stan aplikacji do pliku JSON.</summary>
     public void Save()
     {
         var snapshot = new SnapshotDto
         {
             HotelName = _registry.HotelStructure?.Name ?? "HotelHub",
-            Rooms = _registry.Rooms
-                .Select(room => new RoomDto { Number = room.Number, Type = room.Type.ToString() })
-                .ToList(),
-            Guests = _registry.Guests
-                .Select(guest => new GuestDto
+            Rooms = _registry.Rooms.Select(room => new RoomDto
+            {
+                Number = room.Number,
+                Type = room.Type.ToString(),
+                PricePerNight = room.BasePricePerNight.Amount,
+                Capacity = room.Capacity,
+                Description = room.Description,
+                Amenities = room.Amenities.ToList(),
+                ImagePath = room.ImagePath,
+                IsOutOfService = room.IsOutOfService,
+                OutOfServiceReason = room.OutOfServiceReason
+            }).ToList(),
+            Guests = _registry.Guests.Select(guest => new GuestDto
+            {
+                Id = guest.Id,
+                FirstName = guest.FirstName,
+                LastName = guest.LastName,
+                Email = guest.Email
+            }).ToList(),
+            Accounts = _registry.Accounts.Select(account => new AccountDto
+            {
+                Id = account.Id,
+                Login = account.Login,
+                PasswordHash = account.PasswordHash,
+                Role = account.Role.ToString(),
+                GuestId = account.GuestId,
+                CreatedAt = Stamp(account.CreatedAt)
+            }).ToList(),
+            Reservations = _registry.Reservations.Select(reservation => new ReservationDto
+            {
+                Id = reservation.Id,
+                GuestId = reservation.Guest.Id,
+                RoomNumber = reservation.BaseRoom.Number,
+                From = reservation.Stay.From.ToString(DateFormat, CultureInfo.InvariantCulture),
+                To = reservation.Stay.To.ToString(DateFormat, CultureInfo.InvariantCulture),
+                Extras = RoomExtraDecorator.GetExtras(reservation.Room)
+                    .Select(extra => extra.ToString())
+                    .ToList(),
+                Status = StateToCode(reservation.State),
+                ReservationNumber = reservation.ReservationNumber,
+                RejectionReason = reservation.RejectionReason,
+                CreatedAt = Stamp(reservation.CreatedAt),
+                Pricing = reservation.Pricing is null ? null : PricingToCode(reservation.Pricing),
+                History = reservation.History.Select(change => new HistoryDto
                 {
-                    Id = guest.Id,
-                    FirstName = guest.FirstName,
-                    LastName = guest.LastName,
-                    Email = guest.Email
-                })
-                .ToList(),
-            Reservations = _registry.Reservations
-                .Select(reservation => new ReservationDto
-                {
-                    Id = reservation.Id,
-                    GuestId = reservation.Guest.Id,
-                    RoomNumber = reservation.BaseRoom.Number,
-                    From = reservation.Stay.From.ToString(DateFormat, CultureInfo.InvariantCulture),
-                    To = reservation.Stay.To.ToString(DateFormat, CultureInfo.InvariantCulture),
-                    Extras = RoomExtraDecorator.GetExtras(reservation.Room)
-                        .Select(extra => extra.ToString())
-                        .ToList(),
-                    Status = StateToCode(reservation.State),
-                    ReservationNumber = reservation.ReservationNumber,
-                    RejectionReason = reservation.RejectionReason,
-                    CreatedAt = reservation.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture),
-                    IsCheckedIn = reservation.IsCheckedIn,
-                    Pricing = reservation.Pricing is null
-                        ? null
-                        : PricingToCode(reservation.Pricing)
-                })
-                .ToList()
+                    At = Stamp(change.At),
+                    StateName = change.StateName,
+                    Description = change.Description,
+                    ActorLogin = change.ActorLogin
+                }).ToList()
+            }).ToList(),
+            Notifications = NotificationCenter.Instance.All.Select(notification => new NotificationDto
+            {
+                Id = notification.Id,
+                RecipientGuestId = notification.RecipientGuestId,
+                Message = notification.Message,
+                CreatedAt = Stamp(notification.CreatedAt),
+                IsRead = notification.IsRead
+            }).ToList()
         };
 
         File.WriteAllText(DataFilePath, JsonSerializer.Serialize(snapshot, JsonOptions));
@@ -74,8 +104,8 @@ public sealed class PersistenceService
     }
 
     /// <summary>
-    /// Wczytuje dane z pliku JSON, waliduje je i zastępuje zawartość rejestru.
-    /// Nieprawidłowe wpisy są pomijane z komunikatem ostrzegawczym.
+    /// Wczytuje dane z pliku JSON, waliduje je i zastępuje zawartość rejestru
+    /// oraz centrum powiadomień. Nieprawidłowe wpisy są pomijane z ostrzeżeniem.
     /// </summary>
     public bool Load()
     {
@@ -110,14 +140,17 @@ public sealed class PersistenceService
 
         var rooms = LoadRooms(snapshot);
         var guests = LoadGuests(snapshot);
+        var accounts = LoadAccounts(snapshot, guests);
         var reservations = LoadReservations(snapshot, rooms, guests);
 
-        _registry.ReplaceAll(rooms, guests, reservations);
+        _registry.ReplaceAll(rooms, guests, reservations, accounts);
         _registry.SetHotelStructure(HotelBranch.BuildHotel(snapshot.HotelName ?? "HotelHub", rooms));
         RestoreReservationNumbering(reservations);
+        NotificationCenter.Instance.ReplaceAll(LoadNotifications(snapshot));
 
         Console.WriteLine(
-            $"Wczytano dane: pokoje: {rooms.Count}, goście: {guests.Count}, rezerwacje: {reservations.Count}.");
+            $"Wczytano dane: pokoje: {rooms.Count}, goście: {guests.Count}, " +
+            $"konta: {accounts.Count}, rezerwacje: {reservations.Count}.");
         return true;
     }
 
@@ -141,7 +174,20 @@ public sealed class PersistenceService
 
             try
             {
-                rooms.Add(RoomFactory.CreateRoom(type, dto.Number));
+                var room = RoomFactory.CreateRoom(type, dto.Number);
+
+                if (dto.PricePerNight > 0 && dto.Capacity > 0)
+                {
+                    room.UpdateDetails(new Money(dto.PricePerNight), dto.Capacity,
+                        dto.Description ?? room.Description, dto.Amenities ?? room.Amenities);
+                }
+
+                if (dto.IsOutOfService && !string.IsNullOrWhiteSpace(dto.OutOfServiceReason))
+                {
+                    room.SetOutOfService(dto.OutOfServiceReason);
+                }
+
+                rooms.Add(room);
             }
             catch (Exception exception) when (exception is ArgumentException or ArgumentOutOfRangeException)
             {
@@ -170,6 +216,44 @@ public sealed class PersistenceService
         }
 
         return guests;
+    }
+
+    private static List<UserAccount> LoadAccounts(SnapshotDto snapshot, List<Guest> guests)
+    {
+        var accounts = new List<UserAccount>();
+
+        foreach (var dto in snapshot.Accounts ?? [])
+        {
+            if (!Enum.TryParse<UserRole>(dto.Role, ignoreCase: true, out var role))
+            {
+                Console.WriteLine($"Pominięto konto '{dto.Login}': nieznana rola '{dto.Role}'.");
+                continue;
+            }
+
+            if (role == UserRole.Guest && guests.All(g => g.Id != dto.GuestId))
+            {
+                Console.WriteLine($"Pominięto konto '{dto.Login}': brak powiązanego gościa.");
+                continue;
+            }
+
+            if (accounts.Any(a => string.Equals(a.Login, dto.Login, StringComparison.OrdinalIgnoreCase)))
+            {
+                Console.WriteLine($"Pominięto zduplikowane konto '{dto.Login}'.");
+                continue;
+            }
+
+            try
+            {
+                accounts.Add(new UserAccount(dto.Id, dto.Login ?? string.Empty, dto.PasswordHash ?? string.Empty,
+                    role, dto.GuestId, ParseStamp(dto.CreatedAt)));
+            }
+            catch (ArgumentException exception)
+            {
+                Console.WriteLine($"Pominięto nieprawidłowe konto '{dto.Login}': {exception.Message}");
+            }
+        }
+
+        return accounts;
     }
 
     private static List<Reservation> LoadReservations(
@@ -214,7 +298,7 @@ public sealed class PersistenceService
                 }
 
                 var reservation = new Reservation(
-                    dto.Id, guest, decoratedRoom, new DateRange(from, to), CodeToPricing(dto.Pricing));
+                    dto.Id, guest, decoratedRoom, DateRange.Restore(from, to), CodeToPricing(dto.Pricing));
 
                 var state = CodeToState(dto.Status);
 
@@ -225,21 +309,15 @@ public sealed class PersistenceService
                     state = new PendingState();
                 }
 
-                // Zgodność ze starszym formatem pliku: Opłacona + flaga zameldowania = Zameldowana.
-                if (state is PaidState && dto.IsCheckedIn)
-                {
-                    state = new CheckedInState();
-                }
-
                 reservation.RestoreState(state);
                 reservation.AssignNumber(dto.ReservationNumber ?? string.Empty);
+                reservation.RestoreMetadata(
+                    ParseStamp(dto.CreatedAt),
+                    dto.RejectionReason,
+                    (dto.History ?? []).Select(h => new StateChange(
+                        ParseStamp(h.At), h.StateName ?? string.Empty,
+                        h.Description ?? string.Empty, h.ActorLogin ?? "system")));
 
-                var createdAt = DateTime.TryParseExact(dto.CreatedAt, "yyyy-MM-dd HH:mm:ss",
-                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedCreation)
-                        ? parsedCreation
-                        : DateTime.Now;
-
-                reservation.RestoreMetadata(createdAt, dto.RejectionReason, history: null);
                 reservations.Add(reservation);
             }
             catch (ArgumentException exception)
@@ -249,6 +327,26 @@ public sealed class PersistenceService
         }
 
         return reservations;
+    }
+
+    private static List<Notification> LoadNotifications(SnapshotDto snapshot)
+    {
+        var notifications = new List<Notification>();
+
+        foreach (var dto in snapshot.Notifications ?? [])
+        {
+            try
+            {
+                notifications.Add(new Notification(dto.Id, dto.RecipientGuestId,
+                    dto.Message ?? string.Empty, ParseStamp(dto.CreatedAt), dto.IsRead));
+            }
+            catch (ArgumentException)
+            {
+                Console.WriteLine("Pominięto nieprawidłowe powiadomienie z pliku danych.");
+            }
+        }
+
+        return notifications;
     }
 
     /// <summary>
@@ -272,6 +370,15 @@ public sealed class PersistenceService
             reservation.AssignNumber(_registry.NextReservationNumber());
         }
     }
+
+    private static string Stamp(DateTime value) =>
+        value.ToString(TimestampFormat, CultureInfo.InvariantCulture);
+
+    private static DateTime ParseStamp(string? value) =>
+        DateTime.TryParseExact(value, TimestampFormat, CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var parsed)
+            ? parsed
+            : DateTime.Now;
 
     /// <summary>Mapuje strategię cenową na kod zapisywany w JSON (np. PromoPricing → "Promo").</summary>
     private static string PricingToCode(IPricingStrategy pricing) =>
@@ -309,13 +416,22 @@ public sealed class PersistenceService
         public string? HotelName { get; set; }
         public List<RoomDto>? Rooms { get; set; }
         public List<GuestDto>? Guests { get; set; }
+        public List<AccountDto>? Accounts { get; set; }
         public List<ReservationDto>? Reservations { get; set; }
+        public List<NotificationDto>? Notifications { get; set; }
     }
 
     private sealed class RoomDto
     {
         public int Number { get; set; }
         public string? Type { get; set; }
+        public decimal PricePerNight { get; set; }
+        public int Capacity { get; set; }
+        public string? Description { get; set; }
+        public List<string>? Amenities { get; set; }
+        public string? ImagePath { get; set; }
+        public bool IsOutOfService { get; set; }
+        public string? OutOfServiceReason { get; set; }
     }
 
     private sealed class GuestDto
@@ -324,6 +440,16 @@ public sealed class PersistenceService
         public string? FirstName { get; set; }
         public string? LastName { get; set; }
         public string? Email { get; set; }
+    }
+
+    private sealed class AccountDto
+    {
+        public Guid Id { get; set; }
+        public string? Login { get; set; }
+        public string? PasswordHash { get; set; }
+        public string? Role { get; set; }
+        public Guid? GuestId { get; set; }
+        public string? CreatedAt { get; set; }
     }
 
     private sealed class ReservationDto
@@ -338,7 +464,24 @@ public sealed class PersistenceService
         public string? ReservationNumber { get; set; }
         public string? RejectionReason { get; set; }
         public string? CreatedAt { get; set; }
-        public bool IsCheckedIn { get; set; }
         public string? Pricing { get; set; }
+        public List<HistoryDto>? History { get; set; }
+    }
+
+    private sealed class HistoryDto
+    {
+        public string? At { get; set; }
+        public string? StateName { get; set; }
+        public string? Description { get; set; }
+        public string? ActorLogin { get; set; }
+    }
+
+    private sealed class NotificationDto
+    {
+        public Guid Id { get; set; }
+        public Guid? RecipientGuestId { get; set; }
+        public string? Message { get; set; }
+        public string? CreatedAt { get; set; }
+        public bool IsRead { get; set; }
     }
 }

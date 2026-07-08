@@ -192,23 +192,28 @@ public sealed class HotelRegistry
     }
 
     /// <summary>
-    /// Zastępuje zawartość rejestru danymi wczytanymi z pliku JSON.
-    /// Wykorzystywane wyłącznie przez serwis persystencji.
+    /// Zastępuje zawartość rejestru danymi wczytanymi z pliku JSON
+    /// (łącznie z kontami użytkowników). Wykorzystywane wyłącznie przez serwis persystencji.
     /// </summary>
-    public void ReplaceAll(IEnumerable<Room> rooms, IEnumerable<Guest> guests, IEnumerable<Reservation> reservations)
+    public void ReplaceAll(
+        IEnumerable<Room> rooms, IEnumerable<Guest> guests,
+        IEnumerable<Reservation> reservations, IEnumerable<UserAccount> accounts)
     {
         ArgumentNullException.ThrowIfNull(rooms);
         ArgumentNullException.ThrowIfNull(guests);
         ArgumentNullException.ThrowIfNull(reservations);
+        ArgumentNullException.ThrowIfNull(accounts);
 
         lock (_syncRoot)
         {
             _rooms.Clear();
             _guests.Clear();
             _reservations.Clear();
+            _accounts.Clear();
             _rooms.AddRange(rooms);
             _guests.AddRange(guests);
             _reservations.AddRange(reservations);
+            _accounts.AddRange(accounts);
         }
     }
 }

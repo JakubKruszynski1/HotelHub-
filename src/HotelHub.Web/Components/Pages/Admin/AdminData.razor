@@ -1,0 +1,47 @@
+@page "/admin/data"
+@layout HotelHub.Web.Components.Layout.AdminLayout
+@attribute [Authorize(Roles = "Reception")]
+@inject IBookingFacade Facade
+@inject ToastService Toasts
+
+<PageTitle>Kopia zapasowa — HotelHub</PageTitle>
+
+<h2>Kopia zapasowa</h2>
+<p class="muted">
+    Zapis i odczyt pełnego stanu systemu do pliku <code>hotelhub-data.json</code> w katalogu aplikacji:
+    pokoje, goście, konta użytkowników (hasła wyłącznie jako hashe), rezerwacje z historią i powiadomienia.
+    Plik jest walidowany przy odczycie — nieprawidłowe wpisy są pomijane.
+</p>
+
+<div class="card" style="max-width:640px">
+    <div class="row">
+        <button class="btn btn-accent" @onclick="Save">Zapisz dane do JSON</button>
+        <button class="btn btn-outline" @onclick="Load">Wczytaj dane z JSON</button>
+    </div>
+
+    @if (_message is not null)
+    {
+        <div class="alert @(_success ? "alert-success" : "alert-error")" style="margin-bottom:0">@_message</div>
+    }
+
+    <p class="small muted" style="margin:.9rem 0 0">
+        Stan po zapisie: pokoje: @Facade.Rooms.Count, goście: @Facade.Guests.Count,
+        rezerwacje: @Facade.Reservations.Count.
+    </p>
+</div>
+
+@code {
+    private string? _message;
+    private bool _success = true;
+
+    private void Save() => Apply(Facade.SaveData());
+
+    private void Load() => Apply(Facade.LoadData());
+
+    private void Apply(OperationResult result)
+    {
+        _message = result.Message;
+        _success = result.Success;
+        Toasts.FromResult(result);
+    }
+}

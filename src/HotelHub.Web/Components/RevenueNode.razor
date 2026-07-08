@@ -1,0 +1,29 @@
+@* Rekurencyjny węzeł raportu przychodów po drzewie hotelu (Composite). *@
+
+@if (Component is HotelBranch branch)
+{
+    <details class="expander" open style="margin-bottom:.5rem">
+        <summary>
+            @branch.Name
+            <span class="price" style="float:right">@Fmt.Money(branch.GetRevenue())</span>
+        </summary>
+        <div style="margin-left:1.25rem;margin-top:.5rem">
+            @foreach (var child in branch.Children)
+            {
+                <RevenueNode Component="child" />
+            }
+        </div>
+    </details>
+}
+else if (Component is Room room)
+{
+    <div class="row-between small" style="padding:.25rem 0;border-bottom:1px solid var(--line)">
+        <span>Pokój @room.Number (@room.TypeName)</span>
+        <span class="price">@Fmt.Money(room.GetRevenue())</span>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IHotelComponent Component { get; set; } = default!;
+}

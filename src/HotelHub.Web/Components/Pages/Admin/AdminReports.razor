@@ -1,0 +1,98 @@
+@page "/admin/reports"
+@layout HotelHub.Web.Components.Layout.AdminLayout
+@attribute [Authorize(Roles = "Reception")]
+@inject IBookingFacade Facade
+
+<PageTitle>Raporty — HotelHub</PageTitle>
+
+<h2>Raporty</h2>
+
+<div class="grid grid-3" style="margin-top:1rem">
+    <div class="stat-tile">
+        <div class="stat-value">@Fmt.Money(TotalRevenue)</div>
+        <div class="stat-label">łączny przychód (rezerwacje opłacone i zakończone)</div>
+    </div>
+    <div class="stat-tile">
+        <div class="stat-value">@Facade.Reservations.Count</div>
+        <div class="stat-label">wszystkie rezerwacje</div>
+    </div>
+    <div class="stat-tile">
+        <div class="stat-value">@Facade.Rooms.Count(r => !r.IsOutOfService)/@Facade.Rooms.Count</div>
+        <div class="stat-label">pokoje w użyciu / wszystkie</div>
+    </div>
+</div>
+
+<div class="grid grid-2" style="margin-top:1.25rem">
+    <div class="card">
+        <h3 class="card-title">Przychód wg struktury hotelu</h3>
+        @if (Facade.GetHotelStructure() is { } hotel)
+        {
+            <RevenueNode Component="hotel" />
+        }
+        else
+        {
+            <p class="muted small">Struktura hotelu nie została skonfigurowana.</p>
+        }
+    </div>
+
+    <div>
+        <div class="card">
+            <h3 class="card-title">Rezerwacje wg stanów</h3>
+            <table class="data-table">
+                <tbody>
+                    @foreach (var group in Facade.Reservations
+                        .GroupBy(r => r.State.Name)
+                        .OrderByDescending(g => g.Count()))
+                    {
+                        <tr>
+                            <td><span class="@StatusBadge.CssClass(group.First())">@group.Key</span></td>
+                            <td class="price">@group.Count()</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h3 class="card-title">Przychód wg miesięcy pobytu</h3>
+            @if (RevenueByMonth.Count == 0)
+            {
+                <p class="muted small" style="margin:0">Brak opłaconych rezerwacji.</p>
+            }
+            else
+            {
+                <table class="data-table">
+                    <thead>
+                        <tr><th>Miesiąc</th><th>Rezerwacje</th><th>Przychód</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (month, count, revenue) in RevenueByMonth)
+                        {
+                            <tr>
+                                <td>@month</td>
+                                <td>@count</td>
+                                <td class="price">@Fmt.Money(revenue)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private Money TotalRevenue =>
+        Facade.GetHotelStructure()?.GetRevenue() ?? Money.Zero();
+
+    private IReadOnlyList<(string Month, int Count, decimal Revenue)> RevenueByMonth =>
+        Facade.Reservations
+            .Where(r => r.CountsTowardRevenue)
+            .GroupBy(r => new DateTime(r.Stay.From.Year, r.Stay.From.Month, 1))
+            .OrderBy(g => g.Key)
+            .Select(g => (
+                g.Key.ToString("MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("pl-PL")),
+                g.Count(),
+                g.Sum(r => r.TotalPrice.Amount)))
+            .ToList();
+}
