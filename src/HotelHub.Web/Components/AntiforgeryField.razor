@@ -1,0 +1,39 @@
+@using Microsoft.AspNetCore.Antiforgery
+@using Microsoft.AspNetCore.Http
+@inject IAntiforgery Antiforgery
+@inject IHttpContextAccessor HttpContextAccessor
+
+@*
+    Ukryte pole z tokenem anti-forgery dla klasycznych formularzy POST (logowanie,
+    rejestracja, wylogowanie). Wbudowany <AntiforgeryToken /> emituje token tylko
+    podczas renderowania statycznego (SSR) — przy ponownym renderze przez obwód
+    interaktywny pole znikało z DOM i endpoint odrzucał żądanie. Ten komponent
+    generuje token przez IAntiforgery w obu trybach: w SSR z bieżącego żądania,
+    w obwodzie z kontekstu połączenia (to samo cookie i tożsamość — zmiana
+    tożsamości zawsze przechodzi przez pełne przeładowanie strony).
+*@
+
+<input type="hidden" name="__RequestVerificationToken" value="@_token" />
+
+@code {
+    private string _token = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        if (HttpContextAccessor.HttpContext is not { } context)
+        {
+            return;
+        }
+
+        try
+        {
+            _token = Antiforgery.GetAndStoreTokens(context).RequestToken ?? string.Empty;
+        }
+        catch (InvalidOperationException)
+        {
+            // Odpowiedź HTTP już wysłana (render w obwodzie) — generujemy token
+            // dopasowany do istniejącego cookie, bez zapisu nagłówków.
+            _token = Antiforgery.GetTokens(context).RequestToken ?? string.Empty;
+        }
+    }
+}
